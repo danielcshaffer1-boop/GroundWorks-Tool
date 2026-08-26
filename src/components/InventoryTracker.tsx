@@ -1573,7 +1573,7 @@ export default function InventoryTracker() {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadShop(userId: string) {
+    async function loadShop(userId: string, attempt = 0): Promise<void> {
       const { data, error } = await supabase
         .from("shops")
         .select("id, name, tier")
@@ -1589,6 +1589,24 @@ export default function InventoryTracker() {
         setStatus("signedOut");
         return;
       }
+
+      // Stripe redirects the browser back here the instant Checkout
+      // succeeds, which can beat the webhook that actually flips tier —
+      // it's a separate, async server-to-server call. Give it a few
+      // seconds to land rather than flashing the "choose a plan" screen
+      // right after someone just paid.
+      const justCheckedOut =
+        typeof window !== "undefined" &&
+        new URLSearchParams(window.location.search).get("checkout") === "success";
+      if (justCheckedOut && data.tier === "none" && attempt < 5) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        if (cancelled) return;
+        return loadShop(userId, attempt + 1);
+      }
+      if (justCheckedOut && typeof window !== "undefined") {
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+
       setShop(data as ShopProfile);
       setStatus("signedIn");
     }

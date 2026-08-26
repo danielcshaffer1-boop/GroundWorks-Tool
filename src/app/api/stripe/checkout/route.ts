@@ -52,6 +52,12 @@ export async function POST(request: NextRequest) {
       client_reference_id: shop.id,
       customer: shop.stripe_customer_id ?? undefined,
       customer_email: shop.stripe_customer_id ? undefined : (user.email ?? undefined),
+      // Managed Payments (Stripe's automatic tax handling) requires every
+      // product to have a tax code set, which is a real business decision
+      // (where you're registered to collect sales tax, etc.) — not
+      // something to default silently. Off for now; revisit deliberately
+      // if/when you want Stripe handling tax.
+      managed_payments: { enabled: false },
       // Metadata on the subscription itself (not just the session) is what
       // lets the webhook attribute later renewal/cancellation events back
       // to this shop — the session object isn't available by then.
@@ -67,7 +73,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Couldn't start checkout." }, { status: 500 });
     }
     return NextResponse.json({ url: session.url });
-  } catch {
+  } catch (err) {
+    console.error("Stripe checkout session creation failed:", err);
     return NextResponse.json({ error: "Couldn't start checkout. Try again." }, { status: 500 });
   }
 }

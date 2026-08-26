@@ -37,7 +37,8 @@ export async function POST(request: NextRequest) {
       return_url: `${origin}/`,
     });
     return NextResponse.json({ url: session.url });
-  } catch {
+  } catch (err) {
+    console.error("Stripe billing portal session creation failed:", err);
     return NextResponse.json({ error: "Couldn't open billing portal. Try again." }, { status: 500 });
   }
 }

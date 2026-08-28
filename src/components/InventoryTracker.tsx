@@ -18,6 +18,7 @@ import {
   Lock,
   Upload,
   Trash2,
+  Bell,
   type LucideIcon,
 } from "lucide-react";
 import type {
@@ -39,6 +40,8 @@ import {
   fetchItems,
   fetchMenuItems,
   insertItem,
+  updateItem,
+  deleteItemRow,
   updateItemCount,
   updateItemCounts,
   insertMenuItem,
@@ -47,6 +50,10 @@ import {
   updateIngredient,
   deleteIngredientRow,
   fetchAllShops,
+  fetchAlertRecipients,
+  addAlertRecipient,
+  deleteAlertRecipient,
+  type AlertRecipient,
 } from "@/lib/shop-data";
 
 // ---- Categories (display metadata only — data shape lives in lib/types) ---
@@ -110,9 +117,10 @@ interface ItemRowProps {
   onAdjust: (id: number, delta: number) => void;
   onBatchChange: (id: number, value: number) => void;
   batchValue: number;
+  onEdit: (id: number) => void;
 }
 
-function ItemRow({ item, mode, onAdjust, onBatchChange, batchValue }: ItemRowProps) {
+function ItemRow({ item, mode, onAdjust, onBatchChange, batchValue, onEdit }: ItemRowProps) {
   const status = getStatus(mode === "batch" ? { ...item, count: batchValue } : item);
   const meta = STATUS_META[status];
 
@@ -165,6 +173,15 @@ function ItemRow({ item, mode, onAdjust, onBatchChange, batchValue }: ItemRowPro
           style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
         />
       )}
+
+      <button
+        onClick={() => onEdit(item.id)}
+        className="w-8 h-8 rounded-full flex items-center justify-center border shrink-0 hover:brightness-125"
+        style={{ borderColor: "#5A4A3C", color: "#9C8C79" }}
+        aria-label={`Edit ${item.name}`}
+      >
+        <PencilLine size={14} />
+      </button>
     </div>
   );
 }
@@ -290,6 +307,139 @@ function AddItemForm({ onAdd, onCancel }: AddItemFormProps) {
         >
           <Check size={14} /> Add Item
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ---- Edit item form ---------------------------------------------------------
+
+interface EditItemFormProps {
+  item: InventoryItem;
+  onSave: (id: number, item: Omit<InventoryItem, "id">) => void;
+  onCancel: () => void;
+  onDelete: (id: number) => void;
+}
+
+function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
+  const [name, setName] = useState(item.name);
+  const [unit, setUnit] = useState(item.unit);
+  const [threshold, setThreshold] = useState(item.threshold);
+  const [count, setCount] = useState(item.count);
+  const [category, setCategory] = useState<CategoryId>(item.category);
+  const [unitSize, setUnitSize] = useState(item.unitSize === null ? "" : String(item.unitSize));
+  const [unitMeasure, setUnitMeasure] = useState(item.unitMeasure ?? "");
+
+  return (
+    <div className="rounded-lg border p-5 mb-6" style={{ borderColor: "#5A4A3C", backgroundColor: "#241C17" }}>
+      <div className="font-mono text-xs uppercase tracking-widest mb-4" style={{ color: "#C1663B" }}>
+        Edit {item.name}
+      </div>
+      <div className="grid grid-cols-2 gap-3 mb-3">
+        <input
+          placeholder="Item name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="col-span-2 rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+        />
+        <input
+          placeholder="Stocking unit (e.g. carton, bag)"
+          value={unit}
+          onChange={(e) => setUnit(e.target.value)}
+          className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+        />
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value as CategoryId)}
+          className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+        >
+          {CATEGORIES.map((c) => (
+            <option key={c.id} value={c.id} style={{ color: "#000" }}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
+          Count
+          <input
+            type="number"
+            value={count}
+            onChange={(e) => setCount(parseInt(e.target.value, 10) || 0)}
+            className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+            style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
+          Reorder threshold
+          <input
+            type="number"
+            value={threshold}
+            onChange={(e) => setThreshold(parseInt(e.target.value, 10) || 0)}
+            className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+            style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
+          Amount per unit
+          <input
+            type="number"
+            step="0.1"
+            placeholder="e.g. 32"
+            value={unitSize}
+            onChange={(e) => setUnitSize(e.target.value)}
+            className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+            style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
+          Measure (oz, pumps, cups…)
+          <input
+            placeholder="e.g. oz"
+            value={unitMeasure}
+            onChange={(e) => setUnitMeasure(e.target.value)}
+            className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+            style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+          />
+        </label>
+      </div>
+      <div className="flex gap-2 justify-between">
+        <button
+          onClick={() => onDelete(item.id)}
+          className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-1.5 border"
+          style={{ borderColor: "#5A4A3C", color: "#B0492F" }}
+        >
+          <Trash2 size={14} /> Delete
+        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-1.5 border"
+            style={{ borderColor: "#5A4A3C", color: "#9C8C79" }}
+          >
+            <X size={14} /> Cancel
+          </button>
+          <button
+            onClick={() => {
+              if (!name.trim()) return;
+              onSave(item.id, {
+                name: name.trim(),
+                unit: unit.trim() || "units",
+                count,
+                threshold,
+                category,
+                unitSize: unitSize === "" ? null : parseFloat(unitSize),
+                unitMeasure: unitMeasure.trim() || null,
+              });
+            }}
+            className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-1.5 font-semibold"
+            style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
+          >
+            <Check size={14} /> Save Changes
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -715,6 +865,155 @@ function RecipesPage({
   );
 }
 
+// ---- Restock alerts ---------------------------------------------------------
+
+// Loose E.164 check (+ then 7-15 digits, no leading 0) — not exhaustive,
+// but catches "forgot the +" / "typed letters" before it ever reaches
+// Twilio and fails silently from the shop owner's point of view.
+const PHONE_PATTERN = /^\+[1-9]\d{6,14}$/;
+
+interface AlertsPageProps {
+  shopId: string;
+}
+
+function AlertsPage({ shopId }: AlertsPageProps) {
+  const [recipients, setRecipients] = useState<AlertRecipient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setLoadError("");
+      try {
+        const fetched = await fetchAlertRecipients(shopId);
+        if (!cancelled) setRecipients(fetched);
+      } catch {
+        if (!cancelled) setLoadError("Couldn't load alert recipients.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [shopId]);
+
+  async function handleAdd() {
+    const phone = newPhone.trim();
+    if (!phone) return;
+    setActionError("");
+    if (!PHONE_PATTERN.test(phone)) {
+      setActionError("Enter a phone number in international format, e.g. +15551234567.");
+      return;
+    }
+    setAdding(true);
+    try {
+      const inserted = await addAlertRecipient(shopId, phone);
+      setRecipients((prev) => [...prev, inserted]);
+      setNewPhone("");
+    } catch {
+      setActionError("Couldn't add that number. Try again.");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleRemove(id: number) {
+    const prevRecipients = recipients;
+    setActionError("");
+    setRecipients((prev) => prev.filter((r) => r.id !== id));
+    try {
+      await deleteAlertRecipient(id);
+    } catch {
+      setActionError("Couldn't remove that number.");
+      setRecipients(prevRecipients);
+    }
+  }
+
+  return (
+    <div>
+      <h2
+        style={{ fontFamily: "'Barlow Condensed', sans-serif", color: "#EDE3D3", fontSize: 24, fontWeight: 700 }}
+        className="mb-1"
+      >
+        RESTOCK ALERTS
+      </h2>
+      <p className="text-sm mb-6" style={{ color: "#9C8C79" }}>
+        A text goes out the moment an item&apos;s status gets worse — Stocked to Reorder, or Reorder to Critical. No
+        repeat texts while it just sits at the same status.
+      </p>
+
+      {loading && (
+        <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "#6E6153" }}>
+          Loading…
+        </div>
+      )}
+      {loadError && (
+        <div className="text-sm font-mono" style={{ color: "#B0492F" }}>
+          {loadError}
+        </div>
+      )}
+
+      {!loading && !loadError && (
+        <>
+          <div className="flex gap-2 mb-3">
+            <input
+              type="tel"
+              placeholder="+15551234567"
+              value={newPhone}
+              onChange={(e) => setNewPhone(e.target.value)}
+              className="flex-1 rounded-md border px-3 py-2 font-mono bg-transparent focus:outline-none"
+              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+            />
+            <button
+              onClick={handleAdd}
+              disabled={adding}
+              className="px-4 py-2 rounded-md text-sm font-mono font-semibold flex items-center gap-1.5 disabled:opacity-40"
+              style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
+            >
+              <Plus size={14} /> {adding ? "Adding…" : "Add"}
+            </button>
+          </div>
+
+          {actionError && (
+            <div className="text-xs font-mono mb-4" style={{ color: "#B0492F" }}>
+              {actionError}
+            </div>
+          )}
+
+          {recipients.length === 0 ? (
+            <p className="text-sm" style={{ color: "#9C8C79" }}>
+              No recipients yet — add a phone number above to start getting restock texts.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {recipients.map((r) => (
+                <div
+                  key={r.id}
+                  className="flex items-center justify-between rounded-lg border px-4 py-3"
+                  style={{ borderColor: "#3A2F27" }}
+                >
+                  <span className="font-mono text-sm" style={{ color: "#EDE3D3" }}>
+                    {r.phone}
+                  </span>
+                  <button onClick={() => handleRemove(r.id)} style={{ color: "#6E6153" }} aria-label="Remove">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ---- Login / shop select ---------------------------------------------------------
 
 type AuthMode = "sign-in" | "sign-up";
@@ -957,6 +1256,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
   const [mode, setMode] = useState<Mode>("quick");
   const [batchDraft, setBatchDraft] = useState<Record<number, number>>({});
   const [showAdd, setShowAdd] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<number | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -1082,9 +1382,41 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
     }
   }
 
-  function jumpToEdit() {
+  function jumpToEdit(id: number) {
     setPage("update");
     setMode("quick");
+    setEditingItemId(id);
+  }
+
+  async function saveItemEdit(id: number, patch: Omit<InventoryItem, "id">) {
+    const prevItems = items;
+    setActionError("");
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...patch, id } : i)));
+    try {
+      const updated = await withSaving(() => updateItem(id, patch));
+      setItems((prev) => prev.map((i) => (i.id === id ? updated : i)));
+      setBatchDraft((prev) => ({ ...prev, [id]: updated.count }));
+      setEditingItemId(null);
+    } catch {
+      setActionError("Couldn't save changes to that item.");
+      setItems(prevItems);
+    }
+  }
+
+  async function deleteItem(id: number) {
+    if (typeof window !== "undefined" && !window.confirm("Delete this item? This can't be undone.")) {
+      return;
+    }
+    const prevItems = items;
+    setActionError("");
+    setItems((prev) => prev.filter((i) => i.id !== id));
+    try {
+      await withSaving(() => deleteItemRow(id));
+      setEditingItemId(null);
+    } catch {
+      setActionError("Couldn't delete that item — it may still be used in a recipe.");
+      setItems(prevItems);
+    }
   }
 
   async function addMenuItem(name: string, firstIngredient: { itemId: number; amount: number }) {
@@ -1311,6 +1643,16 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
             >
               {tier === "standard" ? <Lock size={14} /> : <BookOpen size={14} />} Recipes
             </button>
+            <button
+              onClick={() => setPage("alerts")}
+              className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-2 transition-colors"
+              style={{
+                backgroundColor: page === "alerts" ? "#2A211C" : "transparent",
+                color: page === "alerts" ? "#EDE3D3" : "#6E6153",
+              }}
+            >
+              <Bell size={14} /> Alerts
+            </button>
           </div>
 
           {isDemoShop ? (
@@ -1390,6 +1732,20 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
 
         {showAdd && <AddItemForm onAdd={addItem} onCancel={() => setShowAdd(false)} />}
 
+        {editingItemId !== null &&
+          (() => {
+            const editingItem = items.find((i) => i.id === editingItemId);
+            if (!editingItem) return null;
+            return (
+              <EditItemForm
+                item={editingItem}
+                onSave={saveItemEdit}
+                onCancel={() => setEditingItemId(null)}
+                onDelete={deleteItem}
+              />
+            );
+          })()}
+
         {mode === "batch" && (
           <div
             className="rounded-lg border px-4 py-3 mb-6 flex items-center justify-between"
@@ -1456,6 +1812,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
                     onAdjust={adjustQuick}
                     onBatchChange={changeBatchDraft}
                     batchValue={batchDraft[item.id] ?? item.count}
+                    onEdit={jumpToEdit}
                   />
                 ))}
               </div>
@@ -1510,6 +1867,8 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
             onApplySales={applySales}
           />
         )}
+
+        {page === "alerts" && <AlertsPage shopId={shop.id} />}
 
         <div className="text-center font-mono text-[10px] uppercase tracking-widest mt-10" style={{ color: "#4A3F35" }}>
           Text alerts fire automatically when an item crosses into Reorder or Critical

@@ -8,7 +8,7 @@ export type Status = "good" | "low" | "critical";
 // 'none' (see supabase/005_paid_tiers.sql); there is no free tier anymore.
 export type Tier = "none" | "standard" | "pro";
 export type Mode = "quick" | "batch";
-export type Page = "update" | "spreadsheet" | "recipes";
+export type Page = "update" | "spreadsheet" | "recipes" | "alerts";
 
 export interface InventoryItem {
   id: number;

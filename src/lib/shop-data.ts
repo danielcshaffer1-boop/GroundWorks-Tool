@@ -102,6 +102,39 @@ export async function updateItemCount(id: number, count: number): Promise<void> 
   if (error) throw error;
 }
 
+// Full-row edit — everything AddItemForm sets at creation, editable
+// afterward too. Distinct from updateItemCount/updateItemCounts above,
+// which stay narrow (just `count`) since those are the hot paths (Quick
+// Log, Closing Count) and don't need the rest of this shape.
+export async function updateItem(id: number, item: Omit<InventoryItem, "id">): Promise<InventoryItem> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("items")
+    .update({
+      name: item.name,
+      category: item.category,
+      unit: item.unit,
+      count: item.count,
+      threshold: item.threshold,
+      unit_size: item.unitSize,
+      unit_measure: item.unitMeasure,
+    })
+    .eq("id", id)
+    .select(ITEM_COLUMNS)
+    .single();
+  if (error) throw error;
+  return fromItemRow(data as unknown as ItemRow);
+}
+
+// item_id has ON DELETE RESTRICT on ingredients (see supabase/schema.sql),
+// so this throws if the item is still used in a recipe — surfaced to the
+// caller as a normal error, not something papered over here.
+export async function deleteItemRow(id: number): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from("items").delete().eq("id", id);
+  if (error) throw error;
+}
+
 // One request per row rather than a single upsert — items are edited a
 // handful at a time (closing count, a sales import), never in bulk enough
 // for that to matter, and per-row update() avoids upsert's requirement to
@@ -225,3 +258,36 @@ export async function deleteIngredientRow(id: number): Promise<void> {
 // supabase/005_paid_tiers.sql revokes UPDATE on shops.tier from the
 // authenticated role entirely — only the Stripe webhook route, using the
 // service-role key server-side, can change it now.
+
+export interface AlertRecipient {
+  id: number;
+  phone: string;
+}
+
+export async function fetchAlertRecipients(shopId: string): Promise<AlertRecipient[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("alert_recipients")
+    .select("id, phone")
+    .eq("shop_id", shopId)
+    .order("id", { ascending: true });
+  if (error) throw error;
+  return data as unknown as AlertRecipient[];
+}
+
+export async function addAlertRecipient(shopId: string, phone: string): Promise<AlertRecipient> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("alert_recipients")
+    .insert({ shop_id: shopId, phone })
+    .select("id, phone")
+    .single();
+  if (error) throw error;
+  return data as unknown as AlertRecipient;
+}
+
+export async function deleteAlertRecipient(id: number): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from("alert_recipients").delete().eq("id", id);
+  if (error) throw error;
+}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getStripe, priceIdForPlan, type PlanId } from "@/lib/stripe";
+import { DEMO_SHOP_ID } from "@/lib/demo";
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -10,6 +11,10 @@ export async function POST(request: NextRequest) {
 
   if (!user) {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+  }
+
+  if (user.id === DEMO_SHOP_ID) {
+    return NextResponse.json({ error: "Billing isn't available in the demo." }, { status: 403 });
   }
 
   let body: unknown;

@@ -34,6 +34,7 @@ import type {
   SaleLine,
 } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
+import { DEMO_SHOP_ID } from "@/lib/demo";
 import {
   fetchItems,
   fetchMenuItems,
@@ -949,6 +950,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
   // (the outer component gates 'none' out to NoPlanScreen), so `tier` here
   // is always "standard" or "pro". It's read-only — see shop-data.ts.
   const tier = shop.tier;
+  const isDemoShop = shop.id === DEMO_SHOP_ID;
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [page, setPage] = useState<Page>("update");
@@ -1311,17 +1313,26 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
             </button>
           </div>
 
-          <button
-            onClick={openBillingPortal}
-            disabled={portalLoading}
-            className="px-3 py-1.5 rounded-full text-[11px] font-mono border disabled:opacity-60"
-            style={{
-              borderColor: tier === "pro" ? "#C1663B" : "#3A2F27",
-              color: tier === "pro" ? "#C1663B" : "#6E6153",
-            }}
-          >
-            {tier === "pro" ? "★ Pro plan" : "Standard plan"} · {portalLoading ? "Opening…" : "Manage billing"}
-          </button>
+          {isDemoShop ? (
+            <div
+              className="px-3 py-1.5 rounded-full text-[11px] font-mono border"
+              style={{ borderColor: "#3A2F27", color: "#6E6153" }}
+            >
+              ★ Pro plan · Demo mode — billing disabled
+            </div>
+          ) : (
+            <button
+              onClick={openBillingPortal}
+              disabled={portalLoading}
+              className="px-3 py-1.5 rounded-full text-[11px] font-mono border disabled:opacity-60"
+              style={{
+                borderColor: tier === "pro" ? "#C1663B" : "#3A2F27",
+                color: tier === "pro" ? "#C1663B" : "#6E6153",
+              }}
+            >
+              {tier === "pro" ? "★ Pro plan" : "Standard plan"} · {portalLoading ? "Opening…" : "Manage billing"}
+            </button>
+          )}
         </div>
 
         {/* Status summary strip */}

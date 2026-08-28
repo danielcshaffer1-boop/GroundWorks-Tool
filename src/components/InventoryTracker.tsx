@@ -23,12 +23,14 @@ import {
 import type {
   CategoryId,
   Status,
+  Tier,
   Mode,
   Page,
   InventoryItem,
   Ingredient,
   MenuItem,
   ShopProfile,
+  ShopSummary,
   SaleLine,
 } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
@@ -43,6 +45,7 @@ import {
   insertIngredient,
   updateIngredient,
   deleteIngredientRow,
+  fetchAllShops,
 } from "@/lib/shop-data";
 
 // ---- Categories (display metadata only — data shape lives in lib/types) ---
@@ -1561,6 +1564,304 @@ function NoPlanScreen({ shopName, onLogout }: NoPlanScreenProps) {
   );
 }
 
+// ---- Admin panel (view-only) ---------------------------------------------------------
+
+const TIER_LABEL: Record<Tier, string> = { none: "No plan", standard: "Standard", pro: "★ Pro" };
+const TIER_COLOR: Record<Tier, string> = { none: "#6E6153", standard: "#7A8F5E", pro: "#C1663B" };
+
+interface AdminShopDetailProps {
+  shop: ShopSummary;
+  onBack: () => void;
+}
+
+function AdminShopDetail({ shop, onBack }: AdminShopDetailProps) {
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setLoadError("");
+      try {
+        const [fetchedItems, fetchedMenuItems] = await Promise.all([
+          fetchItems(shop.id),
+          fetchMenuItems(shop.id),
+        ]);
+        if (cancelled) return;
+        setItems(fetchedItems);
+        setMenuItems(fetchedMenuItems);
+      } catch {
+        if (!cancelled) setLoadError("Couldn't load this shop's data.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [shop.id]);
+
+  return (
+    <div>
+      <button
+        onClick={onBack}
+        className="font-mono text-xs mb-6 underline underline-offset-2"
+        style={{ color: "#9C8C79" }}
+      >
+        ← All shops
+      </button>
+      <h2
+        style={{ fontFamily: "'Barlow Condensed', sans-serif", color: "#EDE3D3", fontSize: 28, fontWeight: 700 }}
+        className="mb-1"
+      >
+        {shop.name.toUpperCase()}
+      </h2>
+      <p className="text-xs font-mono mb-6" style={{ color: TIER_COLOR[shop.tier] }}>
+        {TIER_LABEL[shop.tier]}
+      </p>
+
+      {loading && (
+        <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "#6E6153" }}>
+          Loading…
+        </div>
+      )}
+      {loadError && (
+        <div className="text-sm font-mono" style={{ color: "#B0492F" }}>
+          {loadError}
+        </div>
+      )}
+
+      {!loading && !loadError && (
+        <>
+          <h3 className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: "#C1663B" }}>
+            Inventory ({items.length})
+          </h3>
+          {items.length === 0 ? (
+            <p className="text-sm mb-8" style={{ color: "#9C8C79" }}>
+              No items.
+            </p>
+          ) : (
+            <div className="rounded-lg border overflow-hidden mb-8" style={{ borderColor: "#3A2F27" }}>
+              <table className="w-full border-collapse font-mono text-sm">
+                <thead>
+                  <tr style={{ backgroundColor: "#241C17" }}>
+                    {["Item", "Category", "Count", "Threshold"].map((label) => (
+                      <th
+                        key={label}
+                        className="text-left px-3 py-2 text-[11px] uppercase tracking-widest"
+                        style={{ color: "#9C8C79", borderBottom: "1px solid #3A2F27" }}
+                      >
+                        {label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item, idx) => (
+                    <tr
+                      key={item.id}
+                      style={{
+                        backgroundColor: idx % 2 === 0 ? "transparent" : "#211A15",
+                        borderBottom: "1px solid #2A2119",
+                      }}
+                    >
+                      <td className="px-3 py-2" style={{ color: "#EDE3D3" }}>
+                        {item.name}
+                      </td>
+                      <td className="px-3 py-2" style={{ color: "#9C8C79" }}>
+                        {CATEGORY_LABEL[item.category]}
+                      </td>
+                      <td className="px-3 py-2" style={{ color: "#EDE3D3" }}>
+                        {item.count} {item.unit}
+                      </td>
+                      <td className="px-3 py-2" style={{ color: "#9C8C79" }}>
+                        {item.threshold}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <h3 className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: "#C1663B" }}>
+            Recipes ({menuItems.length})
+          </h3>
+          {menuItems.length === 0 ? (
+            <p className="text-sm" style={{ color: "#9C8C79" }}>
+              No recipes.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {menuItems.map((mi) => (
+                <div key={mi.id} className="rounded-lg border p-3" style={{ borderColor: "#3A2F27" }}>
+                  <div className="font-semibold mb-1" style={{ color: "#EDE3D3" }}>
+                    {mi.name}
+                  </div>
+                  <ul className="text-xs font-mono flex flex-col gap-0.5" style={{ color: "#9C8C79" }}>
+                    {mi.ingredients.map((ing) => {
+                      const linkedItem = items.find((i) => i.id === ing.itemId);
+                      return (
+                        <li key={ing.id}>
+                          {linkedItem ? linkedItem.name : `item #${ing.itemId} (missing)`} — {ing.amount}{" "}
+                          {linkedItem?.unitMeasure ?? ""}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+interface AdminDashboardProps {
+  onLogout: () => void;
+}
+
+function AdminDashboard({ onLogout }: AdminDashboardProps) {
+  const [shops, setShops] = useState<ShopSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [selectedShopId, setSelectedShopId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setLoadError("");
+      try {
+        const fetched = await fetchAllShops();
+        if (!cancelled) setShops(fetched);
+      } catch {
+        if (!cancelled) setLoadError("Couldn't load shops.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedShop = shops.find((s) => s.id === selectedShopId) ?? null;
+
+  return (
+    <div className="min-h-screen w-full" style={{ backgroundColor: "#1B1512", fontFamily: "'Inter', sans-serif" }}>
+      <div className="max-w-2xl md:max-w-4xl mx-auto px-5 py-10">
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div>
+            <div className="font-mono text-xs uppercase tracking-[0.25em] mb-2" style={{ color: "#C1663B" }}>
+              Ground Work
+            </div>
+            <h1
+              style={{
+                fontFamily: "'Barlow Condensed', sans-serif",
+                color: "#EDE3D3",
+                fontSize: 40,
+                fontWeight: 700,
+                letterSpacing: "0.01em",
+                lineHeight: 1,
+              }}
+            >
+              ADMIN
+            </h1>
+            <p className="text-sm mt-2" style={{ color: "#9C8C79" }}>
+              {shops.length} shop{shops.length === 1 ? "" : "s"} signed up
+            </p>
+          </div>
+          <button
+            onClick={onLogout}
+            className="font-mono text-xs mt-1 underline underline-offset-2"
+            style={{ color: "#9C8C79" }}
+          >
+            Sign out
+          </button>
+        </div>
+
+        {selectedShop ? (
+          <AdminShopDetail shop={selectedShop} onBack={() => setSelectedShopId(null)} />
+        ) : (
+          <>
+            {loading && (
+              <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "#6E6153" }}>
+                Loading shops…
+              </div>
+            )}
+            {loadError && (
+              <div className="text-sm font-mono" style={{ color: "#B0492F" }}>
+                {loadError}
+              </div>
+            )}
+            {!loading && !loadError && shops.length === 0 && (
+              <div className="text-sm" style={{ color: "#9C8C79" }}>
+                No shops signed up yet.
+              </div>
+            )}
+            {!loading && shops.length > 0 && (
+              <div className="rounded-lg border overflow-hidden" style={{ borderColor: "#3A2F27" }}>
+                <table className="w-full border-collapse font-mono text-sm">
+                  <thead>
+                    <tr style={{ backgroundColor: "#241C17" }}>
+                      {["Shop", "Plan", "Signed up"].map((label) => (
+                        <th
+                          key={label}
+                          className="text-left px-3 py-2.5 text-[11px] uppercase tracking-widest"
+                          style={{ color: "#9C8C79", borderBottom: "1px solid #3A2F27" }}
+                        >
+                          {label}
+                        </th>
+                      ))}
+                      <th style={{ borderBottom: "1px solid #3A2F27" }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shops.map((s, idx) => (
+                      <tr
+                        key={s.id}
+                        style={{
+                          backgroundColor: idx % 2 === 0 ? "transparent" : "#211A15",
+                          borderBottom: "1px solid #2A2119",
+                        }}
+                      >
+                        <td className="px-3 py-2.5" style={{ color: "#EDE3D3" }}>
+                          {s.name}
+                        </td>
+                        <td className="px-3 py-2.5" style={{ color: TIER_COLOR[s.tier] }}>
+                          {TIER_LABEL[s.tier]}
+                        </td>
+                        <td className="px-3 py-2.5" style={{ color: "#9C8C79" }}>
+                          {new Date(s.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <button
+                            onClick={() => setSelectedShopId(s.id)}
+                            className="text-xs px-2 py-1 rounded border"
+                            style={{ borderColor: "#3A2F27", color: "#9C8C79" }}
+                          >
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---- Outer app: auth gate + shop switching ---------------------------------------------------------
 
 type AuthStatus = "loading" | "signedOut" | "signedIn";
@@ -1569,9 +1870,26 @@ export default function InventoryTracker() {
   const supabase = useMemo(() => createClient(), []);
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [shop, setShop] = useState<ShopProfile | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+
+    async function loadUser(userId: string) {
+      // Admin identities (supabase/006_admin.sql) don't have a shops row
+      // of their own by design — check this first, before the "no shop
+      // row found" branch below would otherwise treat them as signed out.
+      const { data: adminRow } = await supabase.from("admins").select("id").eq("id", userId).maybeSingle();
+      if (cancelled) return;
+      if (adminRow) {
+        setIsAdmin(true);
+        setShop(null);
+        setStatus("signedIn");
+        return;
+      }
+      setIsAdmin(false);
+      await loadShop(userId);
+    }
 
     async function loadShop(userId: string, attempt = 0): Promise<void> {
       const { data, error } = await supabase
@@ -1615,7 +1933,7 @@ export default function InventoryTracker() {
       if (cancelled) return;
       const user = data.session?.user;
       if (user) {
-        void loadShop(user.id);
+        void loadUser(user.id);
       } else {
         setStatus("signedOut");
       }
@@ -1624,9 +1942,10 @@ export default function InventoryTracker() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, authSession) => {
       const user = authSession?.user;
       if (user) {
-        void loadShop(user.id);
+        void loadUser(user.id);
       } else {
         setShop(null);
+        setIsAdmin(false);
         setStatus("signedOut");
       }
     });
@@ -1647,13 +1966,19 @@ export default function InventoryTracker() {
     );
   }
 
-  if (status === "signedOut" || !shop) {
-    return <LoginScreen />;
-  }
-
   const logout = () => {
     void supabase.auth.signOut();
   };
+
+  // Checked before the "no shop" fallback below — an admin has no shops
+  // row at all by design, so `shop` is null for them even while signed in.
+  if (status === "signedIn" && isAdmin) {
+    return <AdminDashboard onLogout={logout} />;
+  }
+
+  if (status === "signedOut" || !shop) {
+    return <LoginScreen />;
+  }
 
   if (shop.tier === "none") {
     return <NoPlanScreen shopName={shop.name} onLogout={logout} />;

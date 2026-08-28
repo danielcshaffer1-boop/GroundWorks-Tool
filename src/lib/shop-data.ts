@@ -8,7 +8,25 @@
 // — there is no service-role bypass anywhere in this file.
 
 import { createClient } from "@/lib/supabase/client";
-import type { InventoryItem, MenuItem } from "@/lib/types";
+import type { InventoryItem, MenuItem, ShopSummary, Tier } from "@/lib/types";
+
+// Every shop, not just the signed-in one — only returns rows at all for a
+// user in the admins table (supabase/006_admin.sql); anyone else gets an
+// empty array back, same as any other RLS-filtered select.
+export async function fetchAllShops(): Promise<ShopSummary[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("shops")
+    .select("id, name, tier, created_at")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data as unknown as { id: string; name: string; tier: Tier; created_at: string }[]).map((row) => ({
+    id: row.id,
+    name: row.name,
+    tier: row.tier,
+    createdAt: row.created_at,
+  }));
+}
 
 interface ItemRow {
   id: number;

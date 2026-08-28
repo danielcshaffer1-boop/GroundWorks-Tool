@@ -46,3 +46,12 @@ export interface SaleLine {
   menuItem: MenuItem;
   qty: number;
 }
+
+// One row in the admin panel's shop list — a trimmed-down ShopProfile plus
+// signup date, for every shop, not just the signed-in one.
+export interface ShopSummary {
+  id: string;
+  name: string;
+  tier: Tier;
+  createdAt: string;
+}

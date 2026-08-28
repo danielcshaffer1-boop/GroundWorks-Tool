@@ -48,10 +48,14 @@ export interface SaleLine {
 }
 
 // One row in the admin panel's shop list — a trimmed-down ShopProfile plus
-// signup date, for every shop, not just the signed-in one.
+// signup date and Stripe subscription state, for every shop, not just the
+// signed-in one. subscriptionStatus is Stripe's raw status string (active,
+// past_due, canceled, ...) or null if this shop never subscribed at all.
 export interface ShopSummary {
   id: string;
   name: string;
   tier: Tier;
   createdAt: string;
+  stripeSubscriptionId: string | null;
+  subscriptionStatus: string | null;
 }

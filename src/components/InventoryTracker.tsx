@@ -1572,13 +1572,18 @@ const TIER_COLOR: Record<Tier, string> = { none: "#6E6153", standard: "#7A8F5E",
 interface AdminShopDetailProps {
   shop: ShopSummary;
   onBack: () => void;
+  onTierChanged: (shopId: string, tier: Tier) => void;
 }
 
-function AdminShopDetail({ shop, onBack }: AdminShopDetailProps) {
+const TIER_OPTIONS: Tier[] = ["none", "standard", "pro"];
+
+function AdminShopDetail({ shop, onBack, onTierChanged }: AdminShopDetailProps) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [tierUpdating, setTierUpdating] = useState(false);
+  const [tierError, setTierError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -1604,6 +1609,32 @@ function AdminShopDetail({ shop, onBack }: AdminShopDetailProps) {
     };
   }, [shop.id]);
 
+  async function changeTier(nextTier: Tier) {
+    if (nextTier === shop.tier) return;
+    setTierError("");
+    setTierUpdating(true);
+    try {
+      const res = await fetch("/api/admin/set-tier", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shopId: shop.id, tier: nextTier }),
+      });
+      const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+      if (!res.ok || !data?.ok) {
+        setTierError(data?.error || "Couldn't update tier.");
+        return;
+      }
+      onTierChanged(shop.id, nextTier);
+    } catch {
+      setTierError("Couldn't update tier. Try again.");
+    } finally {
+      setTierUpdating(false);
+    }
+  }
+
+  const hasActiveSubscription =
+    !!shop.stripeSubscriptionId && (shop.subscriptionStatus === "active" || shop.subscriptionStatus === "trialing");
+
   return (
     <div>
       <button
@@ -1619,9 +1650,47 @@ function AdminShopDetail({ shop, onBack }: AdminShopDetailProps) {
       >
         {shop.name.toUpperCase()}
       </h2>
-      <p className="text-xs font-mono mb-6" style={{ color: TIER_COLOR[shop.tier] }}>
+      <p className="text-xs font-mono mb-4" style={{ color: TIER_COLOR[shop.tier] }}>
         {TIER_LABEL[shop.tier]}
       </p>
+
+      <div className="rounded-lg border p-4 mb-8" style={{ borderColor: "#3A2F27", backgroundColor: "#211A15" }}>
+        <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: "#C1663B" }}>
+          Override plan
+        </div>
+        <div className="flex items-center gap-2 mb-3">
+          {TIER_OPTIONS.map((t) => (
+            <button
+              key={t}
+              onClick={() => changeTier(t)}
+              disabled={tierUpdating || t === shop.tier}
+              className="px-3 py-1.5 rounded-full text-xs font-mono border disabled:opacity-40"
+              style={{
+                borderColor: t === shop.tier ? TIER_COLOR[t] : "#3A2F27",
+                backgroundColor: t === shop.tier ? TIER_COLOR[t] : "transparent",
+                color: t === shop.tier ? "#1B1512" : "#9C8C79",
+              }}
+            >
+              {TIER_LABEL[t]}
+            </button>
+          ))}
+          {tierUpdating && (
+            <span className="font-mono text-xs" style={{ color: "#6E6153" }}>
+              Saving…
+            </span>
+          )}
+        </div>
+        {tierError && (
+          <div className="text-xs font-mono mb-2" style={{ color: "#B0492F" }}>
+            {tierError}
+          </div>
+        )}
+        <p className="text-[10px] font-mono leading-relaxed" style={{ color: "#6E6153" }}>
+          {hasActiveSubscription
+            ? `This shop has an active Stripe subscription (${shop.subscriptionStatus}) — an override here can get replaced the next time Stripe sends a billing event (renewal, plan change, etc.). Use the shop's own Stripe subscription if you need a permanent change.`
+            : "This shop has no active Stripe subscription, so an override here sticks until they ever subscribe through Stripe."}
+        </p>
+      </div>
 
       {loading && (
         <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "#6E6153" }}>
@@ -1753,6 +1822,10 @@ function AdminDashboard({ onLogout }: AdminDashboardProps) {
 
   const selectedShop = shops.find((s) => s.id === selectedShopId) ?? null;
 
+  function handleTierChanged(shopId: string, tier: Tier) {
+    setShops((prev) => prev.map((s) => (s.id === shopId ? { ...s, tier } : s)));
+  }
+
   return (
     <div className="min-h-screen w-full" style={{ backgroundColor: "#1B1512", fontFamily: "'Inter', sans-serif" }}>
       <div className="max-w-2xl md:max-w-4xl mx-auto px-5 py-10">
@@ -1787,7 +1860,7 @@ function AdminDashboard({ onLogout }: AdminDashboardProps) {
         </div>
 
         {selectedShop ? (
-          <AdminShopDetail shop={selectedShop} onBack={() => setSelectedShopId(null)} />
+          <AdminShopDetail shop={selectedShop} onBack={() => setSelectedShopId(null)} onTierChanged={handleTierChanged} />
         ) : (
           <>
             {loading && (

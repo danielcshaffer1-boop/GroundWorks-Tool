@@ -783,6 +783,32 @@ function LoginScreen() {
     }
   }
 
+  // Public, deliberately shared demo account — anyone hitting this button
+  // signs into the same real Demo Shop. No secret here: these credentials
+  // are meant to be reachable by any visitor, and the button just saves
+  // them from having to type them in. See the chat history around
+  // 2026-08-28 for the tradeoffs (shared mutable state across visitors,
+  // billing portal reachable from that dashboard) before changing this.
+  async function handleTryDemo() {
+    setError("");
+    setNotice("");
+    setBusy(true);
+    const supabase = createClient();
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: "owner2@groundworktestshop.com",
+        password: "correct-horse-battery-2",
+      });
+      if (signInError) {
+        setError("Couldn't load the demo right now. Try again in a moment.");
+      }
+    } catch {
+      setError("Couldn't reach the server. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div
       className="min-h-screen w-full flex items-center justify-center px-5"
@@ -886,6 +912,24 @@ function LoginScreen() {
           style={{ color: "#9C8C79" }}
         >
           {authMode === "sign-in" ? "New shop? Create an account" : "Already have an account? Sign in"}
+        </button>
+
+        <div className="my-4 flex items-center gap-3">
+          <div className="h-px flex-1" style={{ backgroundColor: "#3A2F27" }} />
+          <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "#6E6153" }}>
+            or
+          </span>
+          <div className="h-px flex-1" style={{ backgroundColor: "#3A2F27" }} />
+        </div>
+
+        <button
+          type="button"
+          onClick={handleTryDemo}
+          disabled={busy}
+          className="w-full px-4 py-2.5 rounded-md text-sm font-mono font-semibold border disabled:opacity-60"
+          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+        >
+          {busy ? "Working…" : "Try the demo — no signup needed"}
         </button>
       </form>
     </div>

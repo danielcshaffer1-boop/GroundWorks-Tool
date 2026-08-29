@@ -33,6 +33,16 @@ export interface Ingredient {
   amount: number;
 }
 
+// One batch of a perishable item — a tracked, FIFO-consumed subset of
+// that item's count. See supabase/011_batches.sql for how count and
+// batch quantities stay in sync.
+export interface Batch {
+  id: number;
+  itemId: number;
+  quantity: number;
+  expiresOn: string; // "YYYY-MM-DD"
+}
+
 export interface MenuItem {
   id: number;
   name: string;
@@ -47,6 +57,7 @@ export interface ShopProfile {
   name: string;
   tier: Tier;
   displayMode: DisplayMode;
+  expirationAlertDays: number;
 }
 
 export interface SaleLine {

@@ -20,6 +20,7 @@ import {
   Trash2,
   Bell,
   PackagePlus,
+  CalendarClock,
   type LucideIcon,
 } from "lucide-react";
 import type {
@@ -32,6 +33,7 @@ import type {
   InventoryItem,
   Ingredient,
   MenuItem,
+  Batch,
   ShopProfile,
   ShopSummary,
   SaleLine,
@@ -56,6 +58,12 @@ import {
   addAlertRecipient,
   deleteAlertRecipient,
   updateDisplayMode,
+  updateExpirationAlertDays,
+  fetchBatchesForShop,
+  insertBatch,
+  updateBatch,
+  deleteBatchRow,
+  consumeBatchesFIFO,
   type AlertRecipient,
 } from "@/lib/shop-data";
 
@@ -111,6 +119,21 @@ function displayThreshold(item: InventoryItem, mode: DisplayMode): string {
   return `${amount} ${label}`;
 }
 
+// ---- Batch expiration helpers ----------------------------------------------
+
+function daysUntilDate(dateStr: string): number {
+  const target = new Date(dateStr + "T00:00:00");
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((target.getTime() - today.getTime()) / 86_400_000);
+}
+
+function formatDaysUntil(days: number): string {
+  if (days < 0) return `expired ${Math.abs(days)}d ago`;
+  if (days === 0) return "expires today";
+  return `${days}d left`;
+}
+
 // ---- Stamp badge (signature element) --------------------------------------
 
 function StatusStamp({ status }: { status: Status }) {
@@ -141,20 +164,37 @@ interface ItemRowProps {
   item: InventoryItem;
   mode: Mode;
   displayMode: DisplayMode;
+  batches: Batch[];
   onAdjust: (id: number, delta: number) => void;
   onBatchChange: (id: number, value: number | "") => void;
   batchValue: number | "";
   onEdit: (id: number) => void;
   onAddStock: (id: number) => void;
+  onEditBatches: (id: number) => void;
 }
 
-function ItemRow({ item, mode, displayMode, onAdjust, onBatchChange, batchValue, onEdit, onAddStock }: ItemRowProps) {
+function ItemRow({
+  item,
+  mode,
+  displayMode,
+  batches,
+  onAdjust,
+  onBatchChange,
+  batchValue,
+  onEdit,
+  onAddStock,
+  onEditBatches,
+}: ItemRowProps) {
   // batchValue is "" while the field is mid-edit (backspaced to empty) —
   // fall back to the item's real count just for the status-color preview,
   // rather than treating a blank field as a count of zero.
   const status = getStatus(mode === "batch" ? { ...item, count: batchValue === "" ? item.count : batchValue } : item);
   const meta = STATUS_META[status];
   const qty = displayQuantity(item, displayMode, item.count);
+  const isPerishable = item.category === "perishable";
+  // Nearest-expiring batch, if any — shown as a quick heads-up in the
+  // subtitle without needing to open the batch editor.
+  const nearestBatch = batches.length > 0 ? batches[0] : null;
 
   return (
     <div
@@ -171,6 +211,16 @@ function ItemRow({ item, mode, displayMode, onAdjust, onBatchChange, batchValue,
           threshold {displayThreshold(item, displayMode)} · {meta.label.toLowerCase()}
           {item.unitSize ? ` · 1 ${item.unit.replace(/s$/, "")} = ${item.unitSize} ${item.unitMeasure}` : ""}
         </div>
+        {nearestBatch && (
+          <div
+            className="font-mono text-[10px] mt-0.5 flex items-center gap-1"
+            style={{ color: daysUntilDate(nearestBatch.expiresOn) <= 3 ? "#C79A3E" : "#6E6153" }}
+          >
+            <CalendarClock size={10} />
+            {batches.length === 1 ? "1 batch" : `${batches.length} batches`} ·{" "}
+            {formatDaysUntil(daysUntilDate(nearestBatch.expiresOn))}
+          </div>
+        )}
       </div>
 
       {mode === "quick" ? (
@@ -221,6 +271,18 @@ function ItemRow({ item, mode, displayMode, onAdjust, onBatchChange, batchValue,
       >
         <PackagePlus size={14} />
       </button>
+
+      {isPerishable && (
+        <button
+          onClick={() => onEditBatches(item.id)}
+          className="w-8 h-8 rounded-full flex items-center justify-center border shrink-0 hover:brightness-125"
+          style={{ borderColor: "#5A4A3C", color: "#9C8C79" }}
+          aria-label={`Manage batches for ${item.name}`}
+          title="Batches — track expiration, FIFO"
+        >
+          <CalendarClock size={14} />
+        </button>
+      )}
 
       <button
         onClick={() => onEdit(item.id)}
@@ -502,19 +564,30 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
 
 interface AddStockFormProps {
   item: InventoryItem;
-  onAdd: (id: number, nativeAmount: number) => void;
+  onAdd: (id: number, nativeAmount: number, batchExpiresOn?: string) => void;
   onCancel: () => void;
+}
+
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
   const [qty, setQty] = useState<number | "">(1);
   const [size, setSize] = useState(item.unitSize === null ? "" : String(item.unitSize));
+  // Perishables only — "individual units" behaves exactly as before
+  // (plain count bump); "batch" also creates a tracked batch row with an
+  // expiration date, consumed FIFO ahead of the untracked pool.
+  const [asBatch, setAsBatch] = useState(false);
+  const [expiresOn, setExpiresOn] = useState(todayISO());
 
+  const isPerishable = item.category === "perishable";
   const hasSize = item.unitSize !== null && !!item.unitMeasure;
   const qtyNum = qty === "" ? 0 : qty;
   const sizeNum = parseFloat(size) || 0;
   const sizeDiffers = hasSize && sizeNum > 0 && sizeNum !== item.unitSize;
   const nativeAdd = hasSize && sizeNum > 0 && item.unitSize ? (qtyNum * sizeNum) / item.unitSize : qtyNum;
+  const canSubmit = nativeAdd > 0 && (!asBatch || !!expiresOn);
 
   return (
     <div className="rounded-lg border p-5 mb-6" style={{ borderColor: "#5A4A3C", backgroundColor: "#241C17" }}>
@@ -524,6 +597,32 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
       <p className="text-xs mb-4" style={{ color: "#9C8C79" }}>
         Just picked some up? Say how many you&apos;re adding and it&apos;ll do the math for you.
       </p>
+
+      {isPerishable && (
+        <div className="flex items-center gap-1 p-1 rounded-lg border w-fit mb-3" style={{ borderColor: "#3A2F27" }}>
+          <button
+            onClick={() => setAsBatch(false)}
+            className="px-3 py-1.5 rounded-md text-xs font-mono transition-colors"
+            style={{
+              backgroundColor: !asBatch ? "#2A211C" : "transparent",
+              color: !asBatch ? "#EDE3D3" : "#6E6153",
+            }}
+          >
+            Individual units
+          </button>
+          <button
+            onClick={() => setAsBatch(true)}
+            className="px-3 py-1.5 rounded-md text-xs font-mono transition-colors flex items-center gap-1.5"
+            style={{
+              backgroundColor: asBatch ? "#2A211C" : "transparent",
+              color: asBatch ? "#EDE3D3" : "#6E6153",
+            }}
+          >
+            <CalendarClock size={12} /> New batch
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3 mb-3">
         <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
           Adding how many {item.unit}?
@@ -552,6 +651,18 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
             />
           </label>
         )}
+        {asBatch && (
+          <label className="flex flex-col gap-1 text-xs font-mono col-span-2" style={{ color: "#9C8C79" }}>
+            This batch expires on
+            <input
+              type="date"
+              value={expiresOn}
+              onChange={(e) => setExpiresOn(e.target.value)}
+              className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+            />
+          </label>
+        )}
       </div>
       {sizeDiffers && (
         <p className="text-[11px] font-mono mb-3" style={{ color: "#C79A3E" }}>
@@ -561,6 +672,7 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
       )}
       <p className="text-xs font-mono mb-4" style={{ color: "#7A8F5E" }}>
         New total: {trimNumber(item.count + nativeAdd)} {item.unit}
+        {asBatch && " · tracked as its own batch, consumed first"}
       </p>
       <div className="flex gap-2 justify-end">
         <button
@@ -571,13 +683,188 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
           <X size={14} /> Cancel
         </button>
         <button
-          onClick={() => nativeAdd > 0 && onAdd(item.id, nativeAdd)}
-          disabled={nativeAdd <= 0}
+          onClick={() => canSubmit && onAdd(item.id, nativeAdd, asBatch ? expiresOn : undefined)}
+          disabled={!canSubmit}
           className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-1.5 font-semibold disabled:opacity-40"
           style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
         >
           <PackagePlus size={14} /> Add {trimNumber(qtyNum)} {item.unit}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ---- Batch editor ---------------------------------------------------------
+// Perishables only. Lists every tracked batch for one item — quantity and
+// expiration date both directly editable, oldest first (the order they'll
+// actually be consumed in) — plus a way to add another. Any part of the
+// item's count that isn't covered by a batch is the "untracked" pool,
+// shown as a simple line rather than a fake batch row.
+
+interface BatchEditorRowProps {
+  batch: Batch;
+  unit: string;
+  onSave: (patch: { quantity?: number; expiresOn?: string }) => void;
+  onDelete: () => void;
+}
+
+function BatchEditorRow({ batch, unit, onSave, onDelete }: BatchEditorRowProps) {
+  const [quantity, setQuantity] = useState(String(batch.quantity));
+  const [expiresOn, setExpiresOn] = useState(batch.expiresOn);
+
+  const quantityNum = parseFloat(quantity);
+  const dirty = (quantity !== "" && quantityNum !== batch.quantity) || expiresOn !== batch.expiresOn;
+  const days = daysUntilDate(batch.expiresOn);
+
+  function save() {
+    const patch: { quantity?: number; expiresOn?: string } = {};
+    if (quantity !== "" && quantityNum !== batch.quantity) patch.quantity = Math.max(0, quantityNum);
+    if (expiresOn !== batch.expiresOn) patch.expiresOn = expiresOn;
+    if (Object.keys(patch).length > 0) onSave(patch);
+  }
+
+  return (
+    <div className="flex items-center gap-2 rounded-lg border px-3 py-2 flex-wrap" style={{ borderColor: "#3A2F27" }}>
+      <input
+        type="number"
+        min={0}
+        step="0.1"
+        value={quantity}
+        onChange={(e) => setQuantity(e.target.value)}
+        className="w-20 rounded-md border px-2 py-1.5 text-sm font-mono bg-transparent focus:outline-none"
+        style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+      />
+      <span className="text-xs font-mono" style={{ color: "#6E6153" }}>
+        {unit}
+      </span>
+      <input
+        type="date"
+        value={expiresOn}
+        onChange={(e) => setExpiresOn(e.target.value)}
+        className="rounded-md border px-2 py-1.5 text-sm font-mono bg-transparent focus:outline-none"
+        style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+      />
+      <span
+        className="text-[10px] font-mono"
+        style={{ color: days < 0 ? "#B0492F" : days <= 3 ? "#C79A3E" : "#6E6153" }}
+      >
+        {formatDaysUntil(days)}
+      </span>
+      <div className="flex items-center gap-1 ml-auto">
+        {dirty && (
+          <button
+            onClick={save}
+            className="text-xs px-2 py-1 rounded border font-mono"
+            style={{ borderColor: "#7A8F5E", color: "#7A8F5E" }}
+          >
+            Save
+          </button>
+        )}
+        <button onClick={onDelete} style={{ color: "#6E6153" }} aria-label="Delete batch">
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface BatchEditorProps {
+  item: InventoryItem;
+  batches: Batch[];
+  onAddBatch: (itemId: number, quantity: number, expiresOn: string) => void;
+  onEditBatch: (id: number, patch: { quantity?: number; expiresOn?: string }) => void;
+  onDeleteBatch: (id: number) => void;
+  onClose: () => void;
+}
+
+function BatchEditor({ item, batches, onAddBatch, onEditBatch, onDeleteBatch, onClose }: BatchEditorProps) {
+  const [newQty, setNewQty] = useState<number | "">("");
+  const [newExpiresOn, setNewExpiresOn] = useState(todayISO());
+
+  const trackedTotal = batches.reduce((sum, b) => sum + b.quantity, 0);
+  const untracked = Math.max(0, item.count - trackedTotal);
+
+  return (
+    <div className="rounded-lg border p-5 mb-6" style={{ borderColor: "#5A4A3C", backgroundColor: "#241C17" }}>
+      <div className="flex items-center justify-between mb-1">
+        <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "#C1663B" }}>
+          Batches — {item.name}
+        </div>
+        <button onClick={onClose} style={{ color: "#9C8C79" }} aria-label="Close batch editor">
+          <X size={16} />
+        </button>
+      </div>
+      <p className="text-xs mb-4" style={{ color: "#9C8C79" }}>
+        Oldest-expiring batch is used first automatically as stock gets consumed — Quick Log, Closing Count, and
+        recipe sales deductions all draw from it before touching untracked stock.
+      </p>
+
+      {batches.length === 0 ? (
+        <p className="text-sm mb-4" style={{ color: "#9C8C79" }}>
+          No tracked batches yet — all {trimNumber(item.count)} {item.unit} is untracked stock.
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2 mb-2">
+          {batches.map((b) => (
+            <BatchEditorRow
+              key={b.id}
+              batch={b}
+              unit={item.unit}
+              onSave={(patch) => onEditBatch(b.id, patch)}
+              onDelete={() => onDeleteBatch(b.id)}
+            />
+          ))}
+        </div>
+      )}
+      {batches.length > 0 && untracked > 0 && (
+        <p className="text-[11px] font-mono mb-4" style={{ color: "#6E6153" }}>
+          + {trimNumber(untracked)} {item.unit} untracked (no expiration recorded)
+        </p>
+      )}
+
+      <div className="border-t pt-4 mt-2" style={{ borderColor: "#3A2F27" }}>
+        <div className="font-mono text-[10px] uppercase tracking-widest mb-2" style={{ color: "#9C8C79" }}>
+          Add another batch
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
+            Quantity ({item.unit})
+            <input
+              type="number"
+              min={0}
+              step="0.1"
+              value={newQty}
+              onChange={(e) => setNewQty(e.target.value === "" ? "" : parseFloat(e.target.value))}
+              className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
+            Expires on
+            <input
+              type="date"
+              value={newExpiresOn}
+              onChange={(e) => setNewExpiresOn(e.target.value)}
+              className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+            />
+          </label>
+        </div>
+        <div className="flex justify-end mt-3">
+          <button
+            onClick={() => {
+              if (newQty === "" || newQty <= 0 || !newExpiresOn) return;
+              onAddBatch(item.id, newQty, newExpiresOn);
+              setNewQty("");
+            }}
+            disabled={newQty === "" || newQty <= 0}
+            className="px-4 py-2 rounded-md text-sm font-mono font-semibold flex items-center gap-1.5 disabled:opacity-40"
+            style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
+          >
+            <Plus size={14} /> Add Batch
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1039,9 +1326,11 @@ const PHONE_PATTERN = /^\+[1-9]\d{6,14}$/;
 
 interface AlertsPageProps {
   shopId: string;
+  expirationAlertDays: number;
+  onChangeExpirationAlertDays: (days: number) => void;
 }
 
-function AlertsPage({ shopId }: AlertsPageProps) {
+function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }: AlertsPageProps) {
   const [recipients, setRecipients] = useState<AlertRecipient[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -1106,11 +1395,30 @@ function AlertsPage({ shopId }: AlertsPageProps) {
         style={{ fontFamily: "'Barlow Condensed', sans-serif", color: "#EDE3D3", fontSize: 24, fontWeight: 700 }}
         className="mb-1"
       >
-        RESTOCK ALERTS
+        ALERTS
       </h2>
-      <p className="text-sm mb-6" style={{ color: "#9C8C79" }}>
-        A text goes out the moment an item&apos;s status gets worse — Stocked to Reorder, or Reorder to Critical. No
-        repeat texts while it just sits at the same status.
+      <p className="text-sm mb-4" style={{ color: "#9C8C79" }}>
+        <strong style={{ color: "#EDE3D3" }}>Restock:</strong> a text goes out the moment an item&apos;s status gets
+        worse — Stocked to Reorder, or Reorder to Critical. No repeat texts while it just sits at the same status.
+      </p>
+      <div className="flex items-center gap-2 mb-6 text-sm flex-wrap" style={{ color: "#9C8C79" }}>
+        <strong style={{ color: "#EDE3D3" }}>Expiration:</strong>
+        <span>text</span>
+        <input
+          type="number"
+          min={1}
+          value={expirationAlertDays}
+          onChange={(e) => {
+            const days = parseInt(e.target.value, 10);
+            if (days > 0) onChangeExpirationAlertDays(days);
+          }}
+          className="w-14 rounded-md border px-2 py-1 font-mono text-center bg-transparent focus:outline-none"
+          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+        />
+        <span>day(s) before a batch expires, once, per batch.</span>
+      </div>
+      <p className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color: "#6E6153" }}>
+        Sent to
       </p>
 
       {loading && (
@@ -1417,15 +1725,23 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
   const isDemoShop = shop.id === DEMO_SHOP_ID;
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  // Perishable expiration batches — NOT related to `mode === "batch"`
+  // (Closing Count) or `batchDraft` below, which are an unrelated older
+  // use of the word "batch" for the walk-the-storage-room recount flow.
+  const [perishableBatches, setPerishableBatches] = useState<Batch[]>([]);
   const [page, setPage] = useState<Page>("update");
   const [mode, setMode] = useState<Mode>("quick");
   const [batchDraft, setBatchDraft] = useState<Record<number, number | "">>({});
   const [showAdd, setShowAdd] = useState(false);
   const [editingItemId, setEditingItemId] = useState<number | null>(null);
   const [addingStockId, setAddingStockId] = useState<number | null>(null);
+  const [editingBatchesItemId, setEditingBatchesItemId] = useState<number | null>(null);
   // Cosmetic only (see displayQuantity/displayThreshold) — initialized from
   // the shop's saved preference, persisted on change via updateDisplayMode.
   const [displayMode, setDisplayMode] = useState<DisplayMode>(shop.displayMode);
+  // Days-before-expiration lead time for the batch alert text — same
+  // pattern as displayMode, persisted via updateExpirationAlertDays.
+  const [expirationAlertDays, setExpirationAlertDays] = useState(shop.expirationAlertDays);
   const [savedFlash, setSavedFlash] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -1439,13 +1755,15 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
       setLoading(true);
       setLoadError("");
       try {
-        const [fetchedItems, fetchedMenuItems] = await Promise.all([
+        const [fetchedItems, fetchedMenuItems, fetchedBatches] = await Promise.all([
           fetchItems(shop.id),
           fetchMenuItems(shop.id),
+          fetchBatchesForShop(shop.id),
         ]);
         if (cancelled) return;
         setItems(fetchedItems);
         setMenuItems(fetchedMenuItems);
+        setPerishableBatches(fetchedBatches);
         setBatchDraft(Object.fromEntries(fetchedItems.map((i) => [i.id, i.count])));
       } catch {
         if (!cancelled) setLoadError("Couldn't load your shop's data. Try refreshing the page.");
@@ -1498,6 +1816,19 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
     return c;
   }, [items]);
 
+  // Best-effort refresh of the perishable batch list after something may
+  // have trimmed it server-side (consume_batches_fifo). Not wrapped around
+  // the action that triggered it — the count change already succeeded and
+  // is the source of truth either way; worst case the batch breakdown just
+  // doesn't reflect the trim until the next reload.
+  async function refreshBatches() {
+    try {
+      setPerishableBatches(await fetchBatchesForShop(shop.id));
+    } catch {
+      // see comment above
+    }
+  }
+
   async function adjustQuick(id: number, delta: number) {
     const current = items.find((i) => i.id === id);
     if (!current) return;
@@ -1509,6 +1840,20 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
     } catch {
       setActionError("Couldn't save that change — reload to see the last saved count.");
       setItems((prev) => prev.map((i) => (i.id === id ? { ...i, count: current.count } : i)));
+      return;
+    }
+    // Separate from the try/catch above on purpose — the count save
+    // already succeeded and is the source of truth regardless of whether
+    // this secondary trim works, so a failure here must never trigger the
+    // "couldn't save, roll back" path above.
+    const consumed = current.count - nextCount;
+    if (consumed > 0) {
+      try {
+        await consumeBatchesFIFO(id, consumed);
+        await refreshBatches();
+      } catch {
+        // best-effort — see refreshBatches
+      }
     }
   }
 
@@ -1516,7 +1861,9 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
   // "just got a shipment in" flow. nativeAmount is already converted to
   // the item's tracked unit by AddStockForm (handles a different package
   // size than what's stocked, e.g. 32oz cartons when tracking in 16oz).
-  async function addStock(id: number, nativeAmount: number) {
+  // batchExpiresOn is set only when adding as a tracked batch rather than
+  // plain individual units — see AddStockForm.
+  async function addStock(id: number, nativeAmount: number, batchExpiresOn?: string) {
     const current = items.find((i) => i.id === id);
     if (!current) return;
     const nextCount = current.count + nativeAmount;
@@ -1529,6 +1876,113 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
     } catch {
       setActionError("Couldn't save that addition — reload to see the last saved count.");
       setItems((prev) => prev.map((i) => (i.id === id ? { ...i, count: current.count } : i)));
+      return;
+    }
+    if (batchExpiresOn) {
+      try {
+        const inserted = await withSaving(() => insertBatch(id, nativeAmount, batchExpiresOn));
+        setPerishableBatches((prev) => [...prev, inserted].sort((a, b) => a.expiresOn.localeCompare(b.expiresOn)));
+      } catch {
+        // The count already saved correctly above — this only means the
+        // expiration won't be tracked for this addition. Worth surfacing,
+        // since unlike the FIFO trim above, the user explicitly asked for
+        // this specific batch to be tracked.
+        setActionError("Stock was added, but the expiration date couldn't be saved. You can add it from Batches.");
+      }
+    }
+  }
+
+  // Every one of these three touches BOTH batches and items.count, which
+  // are two separate tables/writes — unlike consumeBatchesFIFO (a single
+  // atomic RPC), there's no way to make this one round trip, so each
+  // function persists items.count via updateItemCount explicitly rather
+  // than relying on the optimistic setItems() call alone. (A real bug
+  // shipped briefly without this: the UI looked right until a reload,
+  // because setItems() only ever updated local state — nothing here was
+  // actually writing the new count to the database.)
+
+  async function addBatch(itemId: number, quantity: number, expiresOn: string) {
+    const current = items.find((i) => i.id === itemId);
+    if (!current) return;
+    const nextCount = current.count + quantity;
+    setActionError("");
+    setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, count: nextCount } : i)));
+    setBatchDraft((prev) => ({ ...prev, [itemId]: nextCount }));
+    try {
+      await withSaving(() => updateItemCount(itemId, nextCount));
+    } catch {
+      setActionError("Couldn't add that batch. Try again.");
+      setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, count: current.count } : i)));
+      setBatchDraft((prev) => ({ ...prev, [itemId]: current.count }));
+      return;
+    }
+    try {
+      const inserted = await withSaving(() => insertBatch(itemId, quantity, expiresOn));
+      setPerishableBatches((prev) => [...prev, inserted].sort((a, b) => a.expiresOn.localeCompare(b.expiresOn)));
+    } catch {
+      setActionError("Stock was added, but the expiration date couldn't be saved. Try adding the batch again.");
+    }
+  }
+
+  async function editBatch(id: number, patch: { quantity?: number; expiresOn?: string }) {
+    const prevBatches = perishableBatches;
+    const batch = perishableBatches.find((b) => b.id === id);
+    if (!batch) return;
+    const item = items.find((i) => i.id === batch.itemId);
+    if (!item) return;
+    const quantityDelta = patch.quantity !== undefined ? patch.quantity - batch.quantity : 0;
+    const nextCount = Math.max(0, item.count + quantityDelta);
+
+    setActionError("");
+    setPerishableBatches((prev) =>
+      prev
+        .map((b) => (b.id === id ? { ...b, ...patch } : b))
+        .sort((a, b) => a.expiresOn.localeCompare(b.expiresOn))
+    );
+    if (quantityDelta !== 0) {
+      setItems((prev) => prev.map((i) => (i.id === batch.itemId ? { ...i, count: nextCount } : i)));
+    }
+    try {
+      await withSaving(() => updateBatch(id, patch));
+      if (quantityDelta !== 0) {
+        await withSaving(() => updateItemCount(batch.itemId, nextCount));
+      }
+    } catch {
+      setActionError("Couldn't save changes to that batch.");
+      setPerishableBatches(prevBatches);
+      if (quantityDelta !== 0) {
+        setItems((prev) => prev.map((i) => (i.id === batch.itemId ? { ...i, count: item.count } : i)));
+      }
+    }
+  }
+
+  async function removeBatch(id: number) {
+    const prevBatches = perishableBatches;
+    const batch = perishableBatches.find((b) => b.id === id);
+    if (!batch) return;
+    const item = items.find((i) => i.id === batch.itemId);
+    if (!item) return;
+    const nextCount = Math.max(0, item.count - batch.quantity);
+
+    setActionError("");
+    setPerishableBatches((prev) => prev.filter((b) => b.id !== id));
+    setItems((prev) => prev.map((i) => (i.id === batch.itemId ? { ...i, count: nextCount } : i)));
+    try {
+      await withSaving(() => deleteBatchRow(id));
+      await withSaving(() => updateItemCount(batch.itemId, nextCount));
+    } catch {
+      setActionError("Couldn't remove that batch.");
+      setPerishableBatches(prevBatches);
+      setItems((prev) => prev.map((i) => (i.id === batch.itemId ? { ...i, count: item.count } : i)));
+    }
+  }
+
+  async function changeExpirationAlertDays(days: number) {
+    setExpirationAlertDays(days);
+    try {
+      await updateExpirationAlertDays(shop.id, days);
+    } catch {
+      // Cosmetic-ish preference, same reasoning as changeDisplayMode.
     }
   }
 
@@ -1575,6 +2029,22 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
       setTimeout(() => setSavedFlash(false), 2200);
     } catch {
       setActionError("Couldn't save the closing count. Try again.");
+      return;
+    }
+    // Only decreases trim batches (FIFO) — a recount that comes in higher
+    // than expected goes to the untracked pool, same as Add Stock's
+    // "individual units" path, since a plain recount doesn't say which
+    // batch (if any) the extra belongs to.
+    const decreases = changed
+      .map((u) => ({ id: u.id, decrease: items.find((i) => i.id === u.id)!.count - u.count }))
+      .filter((d) => d.decrease > 0);
+    if (decreases.length > 0) {
+      try {
+        await Promise.all(decreases.map((d) => consumeBatchesFIFO(d.id, d.decrease)));
+        await refreshBatches();
+      } catch {
+        // best-effort — see refreshBatches
+      }
     }
   }
 
@@ -1745,6 +2215,15 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
       await withSaving(() => updateItemCounts(updates));
     } catch {
       setActionError("Couldn't save the sales deduction. Try again.");
+      return;
+    }
+    // Sales always deduct (never add), so every update here is a decrease
+    // — trim the oldest-expiring batch(es) for each affected item to match.
+    try {
+      await Promise.all(updates.map((u) => consumeBatchesFIFO(u.id, deltaByItemId[u.id])));
+      await refreshBatches();
+    } catch {
+      // best-effort — see refreshBatches
     }
   }
 
@@ -1997,6 +2476,22 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
             return <AddStockForm item={stockItem} onAdd={addStock} onCancel={() => setAddingStockId(null)} />;
           })()}
 
+        {editingBatchesItemId !== null &&
+          (() => {
+            const batchItem = items.find((i) => i.id === editingBatchesItemId);
+            if (!batchItem) return null;
+            return (
+              <BatchEditor
+                item={batchItem}
+                batches={perishableBatches.filter((b) => b.itemId === batchItem.id)}
+                onAddBatch={addBatch}
+                onEditBatch={editBatch}
+                onDeleteBatch={removeBatch}
+                onClose={() => setEditingBatchesItemId(null)}
+              />
+            );
+          })()}
+
         {mode === "batch" && (
           <div
             className="rounded-lg border px-4 py-3 mb-6 flex items-center justify-between"
@@ -2061,11 +2556,13 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
                     item={item}
                     mode={mode}
                     displayMode={displayMode}
+                    batches={perishableBatches.filter((b) => b.itemId === item.id)}
                     onAdjust={adjustQuick}
                     onBatchChange={changeBatchDraft}
                     batchValue={batchDraft[item.id] ?? item.count}
                     onEdit={jumpToEdit}
                     onAddStock={setAddingStockId}
+                    onEditBatches={setEditingBatchesItemId}
                   />
                 ))}
               </div>
@@ -2121,7 +2618,13 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
           />
         )}
 
-        {page === "alerts" && <AlertsPage shopId={shop.id} />}
+        {page === "alerts" && (
+          <AlertsPage
+            shopId={shop.id}
+            expirationAlertDays={expirationAlertDays}
+            onChangeExpirationAlertDays={changeExpirationAlertDays}
+          />
+        )}
 
         <div className="text-center font-mono text-[10px] uppercase tracking-widest mt-10" style={{ color: "#4A3F35" }}>
           Text alerts fire automatically when an item crosses into Reorder or Critical
@@ -2634,7 +3137,7 @@ export default function InventoryTracker() {
     async function loadShop(userId: string, attempt = 0): Promise<void> {
       const { data, error } = await supabase
         .from("shops")
-        .select("id, name, tier, display_mode")
+        .select("id, name, tier, display_mode, expiration_alert_days")
         .eq("id", userId)
         .maybeSingle();
       if (cancelled) return;
@@ -2670,6 +3173,7 @@ export default function InventoryTracker() {
         name: data.name,
         tier: data.tier,
         displayMode: (data.display_mode as DisplayMode | null) ?? "count",
+        expirationAlertDays: (data.expiration_alert_days as number | null) ?? 3,
       });
       setStatus("signedIn");
     }

@@ -29,3 +29,22 @@ export function getTwilioPhoneNumber(): string {
   }
   return phone;
 }
+
+// Shared send helper — used by the expiring-batches cron route. The
+// original item-updated webhook route predates this and inlines the same
+// call directly; left as-is rather than refactored onto this, since it's
+// already proven working against real Twilio credentials and a refactor
+// risks regressing that for no functional gain.
+export async function sendSms(to: string, body: string): Promise<Response> {
+  const accountSid = getTwilioAccountSid();
+  const authToken = getTwilioAuthToken();
+  const fromNumber = getTwilioPhoneNumber();
+  return fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({ To: to, From: fromNumber, Body: body }),
+  });
+}

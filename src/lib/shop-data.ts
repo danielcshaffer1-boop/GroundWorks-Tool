@@ -8,7 +8,7 @@
 // — there is no service-role bypass anywhere in this file.
 
 import { createClient } from "@/lib/supabase/client";
-import type { DisplayMode, InventoryItem, MenuItem, ShopSummary, Tier } from "@/lib/types";
+import type { Batch, DisplayMode, InventoryItem, MenuItem, ShopSummary, Tier } from "@/lib/types";
 
 // Every shop, not just the signed-in one — only returns rows at all for a
 // user in the admins table (supabase/006_admin.sql); anyone else gets an
@@ -297,5 +297,96 @@ export async function addAlertRecipient(shopId: string, phone: string): Promise<
 export async function deleteAlertRecipient(id: number): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase.from("alert_recipients").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// Same idea as display_mode — a shop-level setting, ordinary owner UPDATE
+// privileges cover it. See supabase/011_batches.sql.
+export async function updateExpirationAlertDays(shopId: string, days: number): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from("shops").update({ expiration_alert_days: days }).eq("id", shopId);
+  if (error) throw error;
+}
+
+// ---- Perishable batches (FIFO expiration tracking) ------------------------
+// See supabase/011_batches.sql for the full design note. items.count stays
+// the source of truth everywhere else in the app; a batch just tracks that
+// some portion of it expires on a given date.
+
+interface BatchRow {
+  id: number;
+  item_id: number;
+  quantity: number;
+  expires_on: string;
+}
+
+function fromBatchRow(row: BatchRow): Batch {
+  return { id: row.id, itemId: row.item_id, quantity: row.quantity, expiresOn: row.expires_on };
+}
+
+// All of a shop's batches in one query (RLS already scopes this to the
+// caller's own shop; the items!inner join + filter is defense-in-depth /
+// explicitness, matching the rest of this file's style) rather than one
+// request per item.
+export async function fetchBatchesForShop(shopId: string): Promise<Batch[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("batches")
+    .select("id, item_id, quantity, expires_on, items!inner(shop_id)")
+    .eq("items.shop_id", shopId)
+    .order("expires_on", { ascending: true });
+  if (error) throw error;
+  return (data as unknown as BatchRow[]).map(fromBatchRow);
+}
+
+export async function insertBatch(itemId: number, quantity: number, expiresOn: string): Promise<Batch> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("batches")
+    .insert({ item_id: itemId, quantity, expires_on: expiresOn })
+    .select("id, item_id, quantity, expires_on")
+    .single();
+  if (error) throw error;
+  return fromBatchRow(data as unknown as BatchRow);
+}
+
+export async function updateBatch(
+  id: number,
+  patch: { quantity?: number; expiresOn?: string }
+): Promise<Batch> {
+  const supabase = createClient();
+  const dbPatch: Record<string, number | string | boolean> = {};
+  if (patch.quantity !== undefined) dbPatch.quantity = patch.quantity;
+  // A corrected date should re-arm the expiration alert rather than stay
+  // silenced by whatever the old date already triggered (or didn't).
+  if (patch.expiresOn !== undefined) {
+    dbPatch.expires_on = patch.expiresOn;
+    dbPatch.expiration_alert_sent = false;
+  }
+  const { data, error } = await supabase
+    .from("batches")
+    .update(dbPatch)
+    .eq("id", id)
+    .select("id, item_id, quantity, expires_on")
+    .single();
+  if (error) throw error;
+  return fromBatchRow(data as unknown as BatchRow);
+}
+
+export async function deleteBatchRow(id: number): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from("batches").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// Trims the oldest-expiring batch(es) for an item by `amount`, deleting
+// any batch that's fully used up — the actual FIFO logic, run as a single
+// atomic Postgres function (consume_batches_fifo) rather than several
+// client round trips. No-op if the item has no batches (or amount <= 0);
+// callers don't need to check first.
+export async function consumeBatchesFIFO(itemId: number, amount: number): Promise<void> {
+  if (!(amount > 0)) return;
+  const supabase = createClient();
+  const { error } = await supabase.rpc("consume_batches_fifo", { p_item_id: itemId, p_amount: amount });
   if (error) throw error;
 }

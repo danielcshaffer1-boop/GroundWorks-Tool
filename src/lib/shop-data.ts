@@ -8,7 +8,7 @@
 // — there is no service-role bypass anywhere in this file.
 
 import { createClient } from "@/lib/supabase/client";
-import type { InventoryItem, MenuItem, ShopSummary, Tier } from "@/lib/types";
+import type { DisplayMode, InventoryItem, MenuItem, ShopSummary, Tier } from "@/lib/types";
 
 // Every shop, not just the signed-in one — only returns rows at all for a
 // user in the admins table (supabase/006_admin.sql); anyone else gets an
@@ -251,6 +251,14 @@ export async function updateIngredient(
 export async function deleteIngredientRow(id: number): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase.from("ingredients").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// Purely cosmetic per-shop preference — see supabase/010_shop_display_mode.sql.
+// Unlike tier, ordinary owner UPDATE privileges cover this column fine.
+export async function updateDisplayMode(shopId: string, mode: DisplayMode): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from("shops").update({ display_mode: mode }).eq("id", shopId);
   if (error) throw error;
 }
 

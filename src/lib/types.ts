@@ -9,6 +9,12 @@ export type Status = "good" | "low" | "critical";
 export type Tier = "none" | "standard" | "pro";
 export type Mode = "quick" | "batch";
 export type Page = "update" | "spreadsheet" | "recipes" | "alerts";
+// How quantities are shown across the dashboard — "count" is the raw
+// number of stocking units (e.g. "1.69 bags"); "measurement" converts
+// through unitSize/unitMeasure into a total remaining amount (e.g. "27 oz")
+// for items that have those set. Purely a display choice — entry and
+// editing always happen in native stocking units regardless of this.
+export type DisplayMode = "count" | "measurement";
 
 export interface InventoryItem {
   id: number;
@@ -40,6 +46,7 @@ export interface ShopProfile {
   id: string;
   name: string;
   tier: Tier;
+  displayMode: DisplayMode;
 }
 
 export interface SaleLine {

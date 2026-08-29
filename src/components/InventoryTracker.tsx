@@ -19,6 +19,7 @@ import {
   Upload,
   Trash2,
   Bell,
+  PackagePlus,
   type LucideIcon,
 } from "lucide-react";
 import type {
@@ -27,6 +28,7 @@ import type {
   Tier,
   Mode,
   Page,
+  DisplayMode,
   InventoryItem,
   Ingredient,
   MenuItem,
@@ -53,6 +55,7 @@ import {
   fetchAlertRecipients,
   addAlertRecipient,
   deleteAlertRecipient,
+  updateDisplayMode,
   type AlertRecipient,
 } from "@/lib/shop-data";
 
@@ -85,6 +88,29 @@ const STATUS_META: Record<Status, { label: string; stamp: string; color: string 
   critical: { label: "Critical", stamp: "CRITICAL", color: "#B0492F" },
 };
 
+// ---- Display mode (Count vs. Amount) ---------------------------------------
+// Entry and editing always happen in native stocking units (a count of
+// items/bags/cartons) — this only changes how a quantity is *shown*.
+// "measurement" mode converts through unitSize/unitMeasure into a total
+// remaining amount; items without those set just always show count, since
+// there's nothing to convert.
+
+function trimNumber(n: number): string {
+  return (Math.round(n * 100) / 100).toString();
+}
+
+function displayQuantity(item: InventoryItem, mode: DisplayMode, count: number): { amount: string; label: string } {
+  if (mode === "measurement" && item.unitSize && item.unitMeasure) {
+    return { amount: trimNumber(count * item.unitSize), label: item.unitMeasure };
+  }
+  return { amount: trimNumber(count), label: item.unit };
+}
+
+function displayThreshold(item: InventoryItem, mode: DisplayMode): string {
+  const { amount, label } = displayQuantity(item, mode, item.threshold);
+  return `${amount} ${label}`;
+}
+
 // ---- Stamp badge (signature element) --------------------------------------
 
 function StatusStamp({ status }: { status: Status }) {
@@ -114,15 +140,21 @@ function StatusStamp({ status }: { status: Status }) {
 interface ItemRowProps {
   item: InventoryItem;
   mode: Mode;
+  displayMode: DisplayMode;
   onAdjust: (id: number, delta: number) => void;
-  onBatchChange: (id: number, value: number) => void;
-  batchValue: number;
+  onBatchChange: (id: number, value: number | "") => void;
+  batchValue: number | "";
   onEdit: (id: number) => void;
+  onAddStock: (id: number) => void;
 }
 
-function ItemRow({ item, mode, onAdjust, onBatchChange, batchValue, onEdit }: ItemRowProps) {
-  const status = getStatus(mode === "batch" ? { ...item, count: batchValue } : item);
+function ItemRow({ item, mode, displayMode, onAdjust, onBatchChange, batchValue, onEdit, onAddStock }: ItemRowProps) {
+  // batchValue is "" while the field is mid-edit (backspaced to empty) —
+  // fall back to the item's real count just for the status-color preview,
+  // rather than treating a blank field as a count of zero.
+  const status = getStatus(mode === "batch" ? { ...item, count: batchValue === "" ? item.count : batchValue } : item);
   const meta = STATUS_META[status];
+  const qty = displayQuantity(item, displayMode, item.count);
 
   return (
     <div
@@ -136,7 +168,7 @@ function ItemRow({ item, mode, onAdjust, onBatchChange, batchValue, onEdit }: It
           {item.name.toUpperCase()}
         </div>
         <div className="font-mono text-xs mt-0.5" style={{ color: "#9C8C79" }}>
-          threshold {item.threshold} {item.unit} · {meta.label.toLowerCase()}
+          threshold {displayThreshold(item, displayMode)} · {meta.label.toLowerCase()}
           {item.unitSize ? ` · 1 ${item.unit.replace(/s$/, "")} = ${item.unitSize} ${item.unitMeasure}` : ""}
         </div>
       </div>
@@ -151,8 +183,9 @@ function ItemRow({ item, mode, onAdjust, onBatchChange, batchValue, onEdit }: It
           >
             <Minus size={16} />
           </button>
-          <div className="font-mono text-lg w-14 text-center" style={{ color: "#EDE3D3" }}>
-            {item.count}
+          <div className="font-mono text-center" style={{ color: "#EDE3D3", minWidth: 56 }}>
+            <div className="text-lg leading-tight">{qty.amount}</div>
+            <div className="text-[9px] uppercase tracking-wide" style={{ color: "#6E6153" }}>{qty.label}</div>
           </div>
           <button
             onClick={() => onAdjust(item.id, 1)}
@@ -168,11 +201,26 @@ function ItemRow({ item, mode, onAdjust, onBatchChange, batchValue, onEdit }: It
           type="number"
           min={0}
           value={batchValue}
-          onChange={(e) => onBatchChange(item.id, e.target.value === "" ? 0 : parseInt(e.target.value, 10))}
+          // Blank stays blank instead of snapping to 0 — forcing a "0" into
+          // a controlled number input is what caused the next keystroke to
+          // land in front of it (typing "5" against a displayed "0" gives
+          // "05"). parseFloat (not parseInt) so a fractional closing count
+          // like "2.5" isn't silently truncated to 2.
+          onChange={(e) => onBatchChange(item.id, e.target.value === "" ? "" : parseFloat(e.target.value))}
           className="w-20 font-mono text-lg text-center rounded-md border py-1.5 bg-transparent focus:outline-none focus:ring-2"
           style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
         />
       )}
+
+      <button
+        onClick={() => onAddStock(item.id)}
+        className="w-8 h-8 rounded-full flex items-center justify-center border shrink-0 hover:brightness-125"
+        style={{ borderColor: "#5A4A3C", color: "#9C8C79" }}
+        aria-label={`Add stock for ${item.name}`}
+        title="Add stock — just picked some up?"
+      >
+        <PackagePlus size={14} />
+      </button>
 
       <button
         onClick={() => onEdit(item.id)}
@@ -445,6 +493,96 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
   );
 }
 
+// ---- Add stock form ---------------------------------------------------------
+// The "just got a shipment in" flow: add N of what you're stocking rather
+// than doing count math by hand. If the item has a unitSize/unitMeasure
+// set (the same fields Recipes use), lets you say the package you're
+// adding is a different size than what's tracked (e.g. tracking in 16oz
+// cartons but you bought 32oz ones) and converts automatically.
+
+interface AddStockFormProps {
+  item: InventoryItem;
+  onAdd: (id: number, nativeAmount: number) => void;
+  onCancel: () => void;
+}
+
+function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
+  const [qty, setQty] = useState<number | "">(1);
+  const [size, setSize] = useState(item.unitSize === null ? "" : String(item.unitSize));
+
+  const hasSize = item.unitSize !== null && !!item.unitMeasure;
+  const qtyNum = qty === "" ? 0 : qty;
+  const sizeNum = parseFloat(size) || 0;
+  const sizeDiffers = hasSize && sizeNum > 0 && sizeNum !== item.unitSize;
+  const nativeAdd = hasSize && sizeNum > 0 && item.unitSize ? (qtyNum * sizeNum) / item.unitSize : qtyNum;
+
+  return (
+    <div className="rounded-lg border p-5 mb-6" style={{ borderColor: "#5A4A3C", backgroundColor: "#241C17" }}>
+      <div className="font-mono text-xs uppercase tracking-widest mb-1" style={{ color: "#C1663B" }}>
+        Add Stock — {item.name}
+      </div>
+      <p className="text-xs mb-4" style={{ color: "#9C8C79" }}>
+        Just picked some up? Say how many you&apos;re adding and it&apos;ll do the math for you.
+      </p>
+      <div className="grid grid-cols-2 gap-3 mb-3">
+        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
+          Adding how many {item.unit}?
+          <input
+            type="number"
+            min={0}
+            step="0.1"
+            autoFocus
+            value={qty}
+            onChange={(e) => setQty(e.target.value === "" ? "" : parseFloat(e.target.value))}
+            className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+            style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+          />
+        </label>
+        {hasSize && (
+          <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
+            Size of each ({item.unitMeasure})
+            <input
+              type="number"
+              min={0}
+              step="0.1"
+              value={size}
+              onChange={(e) => setSize(e.target.value)}
+              className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+            />
+          </label>
+        )}
+      </div>
+      {sizeDiffers && (
+        <p className="text-[11px] font-mono mb-3" style={{ color: "#C79A3E" }}>
+          Different size than what you track (1 {item.unit.replace(/s$/, "")} = {item.unitSize} {item.unitMeasure}) —
+          converting: adds {trimNumber(nativeAdd)} {item.unit}.
+        </p>
+      )}
+      <p className="text-xs font-mono mb-4" style={{ color: "#7A8F5E" }}>
+        New total: {trimNumber(item.count + nativeAdd)} {item.unit}
+      </p>
+      <div className="flex gap-2 justify-end">
+        <button
+          onClick={onCancel}
+          className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-1.5 border"
+          style={{ borderColor: "#5A4A3C", color: "#9C8C79" }}
+        >
+          <X size={14} /> Cancel
+        </button>
+        <button
+          onClick={() => nativeAdd > 0 && onAdd(item.id, nativeAdd)}
+          disabled={nativeAdd <= 0}
+          className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-1.5 font-semibold disabled:opacity-40"
+          style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
+        >
+          <PackagePlus size={14} /> Add {trimNumber(qtyNum)} {item.unit}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ---- Spreadsheet view ---------------------------------------------------------
 
 const CATEGORY_LABEL: Record<CategoryId, string> = Object.fromEntries(
@@ -455,10 +593,11 @@ type SortKey = "name" | "category" | "count" | "unit" | "threshold" | "status";
 
 interface SpreadsheetViewProps {
   items: InventoryItem[];
+  displayMode: DisplayMode;
   onEdit: (id: number) => void;
 }
 
-function SpreadsheetView({ items, onEdit }: SpreadsheetViewProps) {
+function SpreadsheetView({ items, displayMode, onEdit }: SpreadsheetViewProps) {
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState(1);
 
@@ -525,6 +664,7 @@ function SpreadsheetView({ items, onEdit }: SpreadsheetViewProps) {
         <tbody>
           {sorted.map((item, idx) => {
             const meta = STATUS_META[item.status];
+            const qty = displayQuantity(item, displayMode, item.count);
             return (
               <tr
                 key={item.id}
@@ -539,14 +679,14 @@ function SpreadsheetView({ items, onEdit }: SpreadsheetViewProps) {
                 <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "#9C8C79" }}>
                   {CATEGORY_LABEL[item.category]}
                 </td>
-                <td className="px-3 py-2.5" style={{ color: "#EDE3D3" }}>
-                  {item.count}
+                <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "#EDE3D3" }}>
+                  {qty.amount} {qty.label}
                 </td>
                 <td className="px-3 py-2.5" style={{ color: "#9C8C79" }}>
                   {item.unit}
                 </td>
-                <td className="px-3 py-2.5" style={{ color: "#9C8C79" }}>
-                  {item.threshold}
+                <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "#9C8C79" }}>
+                  {displayThreshold(item, displayMode)}
                 </td>
                 <td className="px-3 py-2.5 whitespace-nowrap">
                   <span className="inline-flex items-center gap-1.5">
@@ -714,34 +854,59 @@ function MenuItemCard({
 
 interface AddMenuItemFormProps {
   items: InventoryItem[];
+  menuItems: MenuItem[];
   onAdd: (name: string, firstIngredient: { itemId: number; amount: number }) => void;
 }
 
-function AddMenuItemForm({ items, onAdd }: AddMenuItemFormProps) {
+function AddMenuItemForm({ items, menuItems, onAdd }: AddMenuItemFormProps) {
   const [name, setName] = useState("");
+  const [error, setError] = useState("");
   const linkableItems = items.filter((i) => i.unitSize);
 
+  function submit() {
+    const trimmed = name.trim();
+    if (!trimmed || linkableItems.length === 0) return;
+    // Case-insensitive so "Vanilla Latte" and "vanilla latte" collide too —
+    // the unique index on menu_items(shop_id, lower(name)) backs this up
+    // server-side for the concurrent-tab race this check can't catch.
+    const isDuplicate = menuItems.some((m) => m.name.toLowerCase() === trimmed.toLowerCase());
+    if (isDuplicate) {
+      setError(`You already have a recipe named "${trimmed}".`);
+      return;
+    }
+    setError("");
+    onAdd(trimmed, { itemId: linkableItems[0].id, amount: 1 });
+    setName("");
+  }
+
   return (
-    <div className="flex gap-2 mb-6">
-      <input
-        placeholder="New menu item, e.g. Vanilla Latte"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        className="flex-1 rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-        style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
-      />
-      <button
-        onClick={() => {
-          if (!name.trim() || linkableItems.length === 0) return;
-          onAdd(name.trim(), { itemId: linkableItems[0].id, amount: 1 });
-          setName("");
-        }}
-        disabled={linkableItems.length === 0}
-        className="px-4 py-2 rounded-md text-sm font-mono font-semibold flex items-center gap-1.5 disabled:opacity-40"
-        style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
-      >
-        <Plus size={14} /> Add
-      </button>
+    <div className="mb-6">
+      <div className="flex gap-2">
+        <input
+          placeholder="New menu item, e.g. Vanilla Latte"
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value);
+            if (error) setError("");
+          }}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+          className="flex-1 rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+        />
+        <button
+          onClick={submit}
+          disabled={linkableItems.length === 0}
+          className="px-4 py-2 rounded-md text-sm font-mono font-semibold flex items-center gap-1.5 disabled:opacity-40"
+          style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
+        >
+          <Plus size={14} /> Add
+        </button>
+      </div>
+      {error && (
+        <p className="text-[10px] font-mono mt-2" style={{ color: "#B0492F" }}>
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -847,7 +1012,7 @@ function RecipesPage({
           one) with something like 32 oz per carton before you can build a recipe.
         </div>
       )}
-      <AddMenuItemForm items={items} onAdd={onAddMenuItem} />
+      <AddMenuItemForm items={items} menuItems={menuItems} onAdd={onAddMenuItem} />
       {menuItems.map((mi) => (
         <MenuItemCard
           key={mi.id}
@@ -1254,9 +1419,13 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [page, setPage] = useState<Page>("update");
   const [mode, setMode] = useState<Mode>("quick");
-  const [batchDraft, setBatchDraft] = useState<Record<number, number>>({});
+  const [batchDraft, setBatchDraft] = useState<Record<number, number | "">>({});
   const [showAdd, setShowAdd] = useState(false);
   const [editingItemId, setEditingItemId] = useState<number | null>(null);
+  const [addingStockId, setAddingStockId] = useState<number | null>(null);
+  // Cosmetic only (see displayQuantity/displayThreshold) — initialized from
+  // the shop's saved preference, persisted on change via updateDisplayMode.
+  const [displayMode, setDisplayMode] = useState<DisplayMode>(shop.displayMode);
   const [savedFlash, setSavedFlash] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -1343,8 +1512,47 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
     }
   }
 
-  function changeBatchDraft(id: number, value: number) {
-    setBatchDraft((prev) => ({ ...prev, [id]: Math.max(0, value) }));
+  // Add Stock: adds to the current count rather than replacing it — the
+  // "just got a shipment in" flow. nativeAmount is already converted to
+  // the item's tracked unit by AddStockForm (handles a different package
+  // size than what's stocked, e.g. 32oz cartons when tracking in 16oz).
+  async function addStock(id: number, nativeAmount: number) {
+    const current = items.find((i) => i.id === id);
+    if (!current) return;
+    const nextCount = current.count + nativeAmount;
+    setActionError("");
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, count: nextCount } : i)));
+    setBatchDraft((prev) => ({ ...prev, [id]: nextCount }));
+    setAddingStockId(null);
+    try {
+      await withSaving(() => updateItemCount(id, nextCount));
+    } catch {
+      setActionError("Couldn't save that addition — reload to see the last saved count.");
+      setItems((prev) => prev.map((i) => (i.id === id ? { ...i, count: current.count } : i)));
+    }
+  }
+
+  async function changeDisplayMode(next: DisplayMode) {
+    setDisplayMode(next);
+    try {
+      await updateDisplayMode(shop.id, next);
+    } catch {
+      // Cosmetic preference — worth trying again, not worth blocking or
+      // erroring the whole dashboard over. It'll just reset to the saved
+      // value next reload if this silently didn't persist.
+    }
+  }
+
+  function changeBatchDraft(id: number, value: number | "") {
+    setBatchDraft((prev) => ({ ...prev, [id]: value === "" ? "" : Math.max(0, value) }));
+  }
+
+  // A blank draft (mid-edit, backspaced out) resolves back to the item's
+  // last saved count — never to 0 — so leaving a field empty can't
+  // accidentally zero out real inventory on save.
+  function resolveBatchCount(item: InventoryItem): number {
+    const draft = batchDraft[item.id];
+    return draft === "" || draft === undefined ? item.count : draft;
   }
 
   function enterBatchMode() {
@@ -1354,11 +1562,11 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
 
   async function saveBatch() {
     const changed = items
-      .map((i) => ({ id: i.id, count: batchDraft[i.id] ?? i.count }))
+      .map((i) => ({ id: i.id, count: resolveBatchCount(i) }))
       .filter((u) => items.find((i) => i.id === u.id)!.count !== u.count);
 
     setActionError("");
-    setItems((prev) => prev.map((i) => ({ ...i, count: batchDraft[i.id] ?? i.count })));
+    setItems((prev) => prev.map((i) => ({ ...i, count: resolveBatchCount(i) })));
     setMode("quick");
 
     try {
@@ -1424,8 +1632,15 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
     try {
       const inserted = await withSaving(() => insertMenuItem(shop.id, name, firstIngredient));
       setMenuItems((prev) => [...prev, inserted]);
-    } catch {
-      setActionError("Couldn't create that menu item. Try again.");
+    } catch (err) {
+      // 23505 = unique_violation — the menu_items(shop_id, lower(name))
+      // index (see supabase/009_menu_item_name_uniqueness.sql) catching a
+      // duplicate the in-form check above missed, e.g. two tabs submitting
+      // the same name at once.
+      const isDuplicate = typeof err === "object" && err !== null && "code" in err && err.code === "23505";
+      setActionError(
+        isDuplicate ? `You already have a recipe named "${name}".` : "Couldn't create that menu item. Try again."
+      );
     }
   }
 
@@ -1655,14 +1870,42 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
             </button>
           </div>
 
-          {isDemoShop ? (
+          <div className="flex items-center gap-3">
             <div
-              className="px-3 py-1.5 rounded-full text-[11px] font-mono border"
-              style={{ borderColor: "#3A2F27", color: "#6E6153" }}
+              className="flex items-center gap-1 p-1 rounded-lg border w-fit"
+              style={{ borderColor: "#3A2F27", backgroundColor: "#1F1712" }}
+              title="How quantities are shown — count of units, or a converted total amount"
             >
-              ★ Pro plan · Demo mode — billing disabled
+              <button
+                onClick={() => changeDisplayMode("count")}
+                className="px-3 py-1.5 rounded-md text-xs font-mono transition-colors"
+                style={{
+                  backgroundColor: displayMode === "count" ? "#2A211C" : "transparent",
+                  color: displayMode === "count" ? "#EDE3D3" : "#6E6153",
+                }}
+              >
+                Count
+              </button>
+              <button
+                onClick={() => changeDisplayMode("measurement")}
+                className="px-3 py-1.5 rounded-md text-xs font-mono transition-colors"
+                style={{
+                  backgroundColor: displayMode === "measurement" ? "#2A211C" : "transparent",
+                  color: displayMode === "measurement" ? "#EDE3D3" : "#6E6153",
+                }}
+              >
+                Amount
+              </button>
             </div>
-          ) : (
+
+            {isDemoShop ? (
+              <div
+                className="px-3 py-1.5 rounded-full text-[11px] font-mono border"
+                style={{ borderColor: "#3A2F27", color: "#6E6153" }}
+              >
+                ★ Pro plan · Demo mode — billing disabled
+              </div>
+            ) : (
             <button
               onClick={openBillingPortal}
               disabled={portalLoading}
@@ -1674,7 +1917,8 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
             >
               {tier === "pro" ? "★ Pro plan" : "Standard plan"} · {portalLoading ? "Opening…" : "Manage billing"}
             </button>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Status summary strip */}
@@ -1746,6 +1990,13 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
             );
           })()}
 
+        {addingStockId !== null &&
+          (() => {
+            const stockItem = items.find((i) => i.id === addingStockId);
+            if (!stockItem) return null;
+            return <AddStockForm item={stockItem} onAdd={addStock} onCancel={() => setAddingStockId(null)} />;
+          })()}
+
         {mode === "batch" && (
           <div
             className="rounded-lg border px-4 py-3 mb-6 flex items-center justify-between"
@@ -1809,10 +2060,12 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
                     key={item.id}
                     item={item}
                     mode={mode}
+                    displayMode={displayMode}
                     onAdjust={adjustQuick}
                     onBatchChange={changeBatchDraft}
                     batchValue={batchDraft[item.id] ?? item.count}
                     onEdit={jumpToEdit}
+                    onAddStock={setAddingStockId}
                   />
                 ))}
               </div>
@@ -1824,7 +2077,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
         )}
 
         {page === "spreadsheet" && (
-          <SpreadsheetView items={items} onEdit={jumpToEdit} />
+          <SpreadsheetView items={items} displayMode={displayMode} onEdit={jumpToEdit} />
         )}
 
         {page === "recipes" && tier === "standard" && (
@@ -2381,7 +2634,7 @@ export default function InventoryTracker() {
     async function loadShop(userId: string, attempt = 0): Promise<void> {
       const { data, error } = await supabase
         .from("shops")
-        .select("id, name, tier")
+        .select("id, name, tier, display_mode")
         .eq("id", userId)
         .maybeSingle();
       if (cancelled) return;
@@ -2412,7 +2665,12 @@ export default function InventoryTracker() {
         window.history.replaceState(null, "", window.location.pathname);
       }
 
-      setShop(data as ShopProfile);
+      setShop({
+        id: data.id,
+        name: data.name,
+        tier: data.tier,
+        displayMode: (data.display_mode as DisplayMode | null) ?? "count",
+      });
       setStatus("signedIn");
     }
 

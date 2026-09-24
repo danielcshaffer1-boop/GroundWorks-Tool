@@ -1468,29 +1468,29 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
               <span>
                 I agree to receive automated text alerts about my inventory (restock and expiration alerts) from
                 GroundWorks Inventory. Message frequency varies. Msg &amp; data rates may apply. Reply STOP to a
-                text to opt out, HELP for help. See our{" "}
-                <a
-                  href="https://docs.google.com/document/d/1WK9vGoqY49YQFDl4zjIQtq6P8kvLiZ0eHYV5ob_gxTg/edit?usp=sharing"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline"
-                  style={{ color: "#EDE3D3" }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  Privacy Policy
-                </a>{" "}
-                and{" "}
-                <a
-                  href="https://docs.google.com/document/d/13gFfxhpodBltWpfNRV7bia5ub1qq5VmX-ngS2eV1wCk/edit?usp=sharing"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline"
-                  style={{ color: "#EDE3D3" }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  Terms
-                </a>
-                .
+                text to opt out, HELP for help.
+                <span className="flex items-center gap-3 mt-2">
+                  <a
+                    href="https://docs.google.com/document/d/1WK9vGoqY49YQFDl4zjIQtq6P8kvLiZ0eHYV5ob_gxTg/edit?usp=sharing"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline font-semibold"
+                    style={{ color: "#EDE3D3" }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Privacy Policy
+                  </a>
+                  <a
+                    href="https://docs.google.com/document/d/13gFfxhpodBltWpfNRV7bia5ub1qq5VmX-ngS2eV1wCk/edit?usp=sharing"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline font-semibold"
+                    style={{ color: "#EDE3D3" }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Terms of Service
+                  </a>
+                </span>
               </span>
             </label>
 

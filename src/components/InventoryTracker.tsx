@@ -1345,6 +1345,7 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
   const [loadError, setLoadError] = useState("");
   const [actionError, setActionError] = useState("");
   const [newPhone, setNewPhone] = useState("");
+  const [consentChecked, setConsentChecked] = useState(false);
   const [adding, setAdding] = useState(false);
 
   useEffect(() => {
@@ -1368,7 +1369,7 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
 
   async function handleAdd() {
     const phone = newPhone.trim();
-    if (!phone) return;
+    if (!phone || !consentChecked) return;
     setActionError("");
     if (!PHONE_PATTERN.test(phone)) {
       setActionError("Enter a phone number in international format, e.g. +15551234567.");
@@ -1379,6 +1380,7 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
       const inserted = await addAlertRecipient(shopId, phone);
       setRecipients((prev) => [...prev, inserted]);
       setNewPhone("");
+      setConsentChecked(false);
     } catch {
       setActionError("Couldn't add that number. Try again.");
     } finally {
@@ -1429,31 +1431,6 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
       <p className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color: "#6E6153" }}>
         Sent to
       </p>
-      <p className="text-xs mb-3" style={{ color: "#6E6153" }}>
-        By adding a number, you agree to receive automated text alerts about your inventory from GroundWorks
-        Inventory. Message frequency varies. Msg &amp; data rates may apply. Reply STOP to a text to opt out, HELP
-        for help. See our{" "}
-        <a
-          href="https://docs.google.com/document/d/1WK9vGoqY49YQFDl4zjIQtq6P8kvLiZ0eHYV5ob_gxTg/edit?usp=sharing"
-          target="_blank"
-          rel="noreferrer"
-          className="underline"
-          style={{ color: "#9C8C79" }}
-        >
-          Privacy Policy
-        </a>{" "}
-        and{" "}
-        <a
-          href="https://docs.google.com/document/d/13gFfxhpodBltWpfNRV7bia5ub1qq5VmX-ngS2eV1wCk/edit?usp=sharing"
-          target="_blank"
-          rel="noreferrer"
-          className="underline"
-          style={{ color: "#9C8C79" }}
-        >
-          Terms
-        </a>
-        .
-      </p>
 
       {loading && (
         <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "#6E6153" }}>
@@ -1468,22 +1445,62 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
 
       {!loading && !loadError && (
         <>
-          <div className="flex gap-2 mb-3">
-            <input
-              type="tel"
-              placeholder="+15551234567"
-              value={newPhone}
-              onChange={(e) => setNewPhone(e.target.value)}
-              className="flex-1 rounded-md border px-3 py-2 font-mono bg-transparent focus:outline-none"
-              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
-            />
+          <div className="rounded-lg border p-4 mb-4" style={{ borderColor: "#3A2F27" }}>
+            <label className="flex flex-col gap-1 text-xs font-mono mb-3" style={{ color: "#9C8C79" }}>
+              Phone number
+              <input
+                type="tel"
+                placeholder="+15551234567"
+                value={newPhone}
+                onChange={(e) => setNewPhone(e.target.value)}
+                className="rounded-md border px-3 py-2 font-mono bg-transparent focus:outline-none"
+                style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+              />
+            </label>
+
+            <label className="flex items-start gap-2 text-xs mb-4 cursor-pointer" style={{ color: "#9C8C79" }}>
+              <input
+                type="checkbox"
+                checked={consentChecked}
+                onChange={(e) => setConsentChecked(e.target.checked)}
+                className="mt-0.5 shrink-0"
+              />
+              <span>
+                I agree to receive automated text alerts about my inventory (restock and expiration alerts) from
+                GroundWorks Inventory. Message frequency varies. Msg &amp; data rates may apply. Reply STOP to a
+                text to opt out, HELP for help. See our{" "}
+                <a
+                  href="https://docs.google.com/document/d/1WK9vGoqY49YQFDl4zjIQtq6P8kvLiZ0eHYV5ob_gxTg/edit?usp=sharing"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline"
+                  style={{ color: "#EDE3D3" }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Privacy Policy
+                </a>{" "}
+                and{" "}
+                <a
+                  href="https://docs.google.com/document/d/13gFfxhpodBltWpfNRV7bia5ub1qq5VmX-ngS2eV1wCk/edit?usp=sharing"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline"
+                  style={{ color: "#EDE3D3" }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Terms
+                </a>
+                .
+              </span>
+            </label>
+
             <button
               onClick={handleAdd}
-              disabled={adding}
+              disabled={adding || !newPhone.trim() || !consentChecked}
               className="px-4 py-2 rounded-md text-sm font-mono font-semibold flex items-center gap-1.5 disabled:opacity-40"
               style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
             >
-              <Plus size={14} /> {adding ? "Adding…" : "Add"}
+              <Plus size={14} /> {adding ? "Signing up…" : "Yes, sign me up!"}
             </button>
           </div>
 

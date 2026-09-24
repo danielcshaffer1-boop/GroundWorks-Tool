@@ -1429,6 +1429,31 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
       <p className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color: "#6E6153" }}>
         Sent to
       </p>
+      <p className="text-xs mb-3" style={{ color: "#6E6153" }}>
+        By adding a number, you agree to receive automated text alerts about your inventory from GroundWorks
+        Inventory. Message frequency varies. Msg &amp; data rates may apply. Reply STOP to a text to opt out, HELP
+        for help. See our{" "}
+        <a
+          href="https://docs.google.com/document/d/1WK9vGoqY49YQFDl4zjIQtq6P8kvLiZ0eHYV5ob_gxTg/edit?usp=sharing"
+          target="_blank"
+          rel="noreferrer"
+          className="underline"
+          style={{ color: "#9C8C79" }}
+        >
+          Privacy Policy
+        </a>{" "}
+        and{" "}
+        <a
+          href="https://docs.google.com/document/d/13gFfxhpodBltWpfNRV7bia5ub1qq5VmX-ngS2eV1wCk/edit?usp=sharing"
+          target="_blank"
+          rel="noreferrer"
+          className="underline"
+          style={{ color: "#9C8C79" }}
+        >
+          Terms
+        </a>
+        .
+      </p>
 
       {loading && (
         <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "#6E6153" }}>

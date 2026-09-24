@@ -1,3 +1,5 @@
+import { createHmac, timingSafeEqual } from "crypto";
+
 // Server-only. Auth Token is stored base64-wrapped (TWILIO_AUTH_TOKEN_B64)
 // as a preemptive measure — the same class of value (a GitHub/Vercel
 // secret-scanning partner format) that got silently mangled by the deploy
@@ -47,4 +49,26 @@ export async function sendSms(to: string, body: string): Promise<Response> {
     },
     body: new URLSearchParams({ To: to, From: fromNumber, Body: body }),
   });
+}
+
+// Verifies the X-Twilio-Signature header on an inbound webhook request, so
+// /api/twilio/inbound only acts on requests that actually came from Twilio
+// — otherwise anyone could POST a fake "STOP" and silently unsubscribe a
+// shop's alert number. Implements Twilio's documented algorithm: HMAC-SHA1
+// of the full request URL with every POST param's key+value appended (in
+// the order Twilio sends them, sorted alphabetically by key, no separators
+// between pairs), keyed by the Auth Token, then base64-compared.
+export function verifyTwilioSignature(
+  url: string,
+  params: Record<string, string>,
+  signatureHeader: string | null
+): boolean {
+  if (!signatureHeader) return false;
+  const authToken = getTwilioAuthToken();
+  const sortedKeys = Object.keys(params).sort();
+  const data = sortedKeys.reduce((acc, key) => acc + key + params[key], url);
+  const expected = createHmac("sha1", authToken).update(data, "utf8").digest("base64");
+  const expectedBuf = Buffer.from(expected);
+  const actualBuf = Buffer.from(signatureHeader);
+  return expectedBuf.length === actualBuf.length && timingSafeEqual(expectedBuf, actualBuf);
 }

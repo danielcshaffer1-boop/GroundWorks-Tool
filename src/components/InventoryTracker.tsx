@@ -73,13 +73,12 @@ interface Category {
   id: CategoryId;
   label: string;
   icon: LucideIcon;
-  note: string;
 }
 
 const CATEGORIES: Category[] = [
-  { id: "perishable", label: "Perishables", icon: Snowflake, note: "Milk, cream, pastries — watch freshness, not just count" },
-  { id: "dry", label: "Dry Goods & Syrups", icon: Coffee, note: "Beans, syrups, sugar — steady, predictable burn rate" },
-  { id: "disposable", label: "Disposables", icon: CupSoda, note: "Cups, lids, straws — boring until you're out mid-rush" },
+  { id: "perishable", label: "Perishables", icon: Snowflake },
+  { id: "dry", label: "Dry Goods & Syrups", icon: Coffee },
+  { id: "disposable", label: "Disposables", icon: CupSoda },
 ];
 
 // ---- Status logic ---------------------------------------------------------
@@ -140,10 +139,8 @@ function StatusStamp({ status }: { status: Status }) {
   const meta = STATUS_META[status];
   return (
     <div
-      className="shrink-0 flex items-center justify-center rounded-full border-2 font-mono uppercase tracking-wider select-none"
+      className="shrink-0 flex items-center justify-center rounded-full border-2 font-mono uppercase tracking-wider select-none w-12 h-12 sm:w-16 sm:h-16"
       style={{
-        width: 64,
-        height: 64,
         borderColor: meta.color,
         color: meta.color,
         transform: "rotate(-8deg)",
@@ -198,100 +195,112 @@ function ItemRow({
 
   return (
     <div
-      className="flex items-center gap-4 py-4 border-b"
+      // Always two lines (info on top, controls below) rather than trying
+      // to fit everything on one row past some breakpoint — the category
+      // list is itself a 2-column grid on wider screens, so "wide viewport"
+      // doesn't mean "wide column"; a fixed breakpoint here can't reliably
+      // predict how much width a row actually has. Stacking always is
+      // simpler and correct at every size instead of guessing.
+      className="flex flex-col gap-3 py-4 border-b"
       style={{ borderColor: "#3A2F27" }}
     >
-      <StatusStamp status={status} />
+      <div className="flex items-center gap-3 min-w-0">
+        <StatusStamp status={status} />
 
-      <div className="flex-1 min-w-0">
-        <div className="font-semibold" style={{ color: "#EDE3D3", fontFamily: "'Barlow Condensed', sans-serif", fontSize: 19, letterSpacing: "0.01em" }}>
-          {item.name.toUpperCase()}
-        </div>
-        <div className="font-mono text-xs mt-0.5" style={{ color: "#9C8C79" }}>
-          threshold {displayThreshold(item, displayMode)} · {meta.label.toLowerCase()}
-          {item.unitSize ? ` · 1 ${item.unit.replace(/s$/, "")} = ${item.unitSize} ${item.unitMeasure}` : ""}
-        </div>
-        {nearestBatch && (
-          <div
-            className="font-mono text-[10px] mt-0.5 flex items-center gap-1"
-            style={{ color: daysUntilDate(nearestBatch.expiresOn) <= 3 ? "#C79A3E" : "#6E6153" }}
-          >
-            <CalendarClock size={10} />
-            {batches.length === 1 ? "1 batch" : `${batches.length} batches`} ·{" "}
-            {formatDaysUntil(daysUntilDate(nearestBatch.expiresOn))}
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold" style={{ color: "#EDE3D3", fontFamily: "'Barlow Condensed', sans-serif", fontSize: 19, letterSpacing: "0.01em" }}>
+            {item.name.toUpperCase()}
           </div>
-        )}
+          <div className="font-mono text-xs mt-0.5" style={{ color: "#9C8C79" }}>
+            threshold {displayThreshold(item, displayMode)} · {meta.label.toLowerCase()}
+            {item.unitSize ? ` · 1 ${item.unit.replace(/s$/, "")} = ${item.unitSize} ${item.unitMeasure}` : ""}
+          </div>
+          {nearestBatch && (
+            <div
+              className="font-mono text-[10px] mt-0.5 flex items-center gap-1"
+              style={{ color: daysUntilDate(nearestBatch.expiresOn) <= 3 ? "#C79A3E" : "#6E6153" }}
+            >
+              <CalendarClock size={10} />
+              {batches.length === 1 ? "1 batch" : `${batches.length} batches`} ·{" "}
+              {formatDaysUntil(daysUntilDate(nearestBatch.expiresOn))}
+            </div>
+          )}
+        </div>
       </div>
 
-      {mode === "quick" ? (
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => onAdjust(item.id, -1)}
-            className="w-9 h-9 rounded-full flex items-center justify-center border transition-colors hover:brightness-125"
-            style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
-            aria-label={`Decrease ${item.name}`}
-          >
-            <Minus size={16} />
-          </button>
-          <div className="font-mono text-center" style={{ color: "#EDE3D3", minWidth: 56 }}>
-            <div className="text-lg leading-tight">{qty.amount}</div>
-            <div className="text-[9px] uppercase tracking-wide" style={{ color: "#6E6153" }}>{qty.label}</div>
+      <div className="flex items-center justify-between gap-3">
+        {mode === "quick" ? (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onAdjust(item.id, -1)}
+              className="w-9 h-9 rounded-full flex items-center justify-center border transition-colors hover:brightness-125 shrink-0"
+              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+              aria-label={`Decrease ${item.name}`}
+            >
+              <Minus size={16} />
+            </button>
+            <div className="font-mono text-center" style={{ color: "#EDE3D3", minWidth: 48 }}>
+              <div className="text-lg leading-tight">{qty.amount}</div>
+              <div className="text-[9px] uppercase tracking-wide" style={{ color: "#6E6153" }}>{qty.label}</div>
+            </div>
+            <button
+              onClick={() => onAdjust(item.id, 1)}
+              className="w-9 h-9 rounded-full flex items-center justify-center border transition-colors hover:brightness-125 shrink-0"
+              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+              aria-label={`Increase ${item.name}`}
+            >
+              <Plus size={16} />
+            </button>
           </div>
-          <button
-            onClick={() => onAdjust(item.id, 1)}
-            className="w-9 h-9 rounded-full flex items-center justify-center border transition-colors hover:brightness-125"
+        ) : (
+          <input
+            type="number"
+            min={0}
+            value={batchValue}
+            // Blank stays blank instead of snapping to 0 — forcing a "0" into
+            // a controlled number input is what caused the next keystroke to
+            // land in front of it (typing "5" against a displayed "0" gives
+            // "05"). parseFloat (not parseInt) so a fractional closing count
+            // like "2.5" isn't silently truncated to 2.
+            onChange={(e) => onBatchChange(item.id, e.target.value === "" ? "" : parseFloat(e.target.value))}
+            className="w-20 font-mono text-lg text-center rounded-md border py-1.5 bg-transparent focus:outline-none focus:ring-2"
             style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
-            aria-label={`Increase ${item.name}`}
+          />
+        )}
+
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => onAddStock(item.id)}
+            className="w-8 h-8 rounded-full flex items-center justify-center border shrink-0 hover:brightness-125"
+            style={{ borderColor: "#5A4A3C", color: "#9C8C79" }}
+            aria-label={`Add stock for ${item.name}`}
+            title="Add stock — just picked some up?"
           >
-            <Plus size={16} />
+            <PackagePlus size={14} />
+          </button>
+
+          {isPerishable && (
+            <button
+              onClick={() => onEditBatches(item.id)}
+              className="w-8 h-8 rounded-full flex items-center justify-center border shrink-0 hover:brightness-125"
+              style={{ borderColor: "#5A4A3C", color: "#9C8C79" }}
+              aria-label={`Manage batches for ${item.name}`}
+              title="Batches — track expiration, FIFO"
+            >
+              <CalendarClock size={14} />
+            </button>
+          )}
+
+          <button
+            onClick={() => onEdit(item.id)}
+            className="w-8 h-8 rounded-full flex items-center justify-center border shrink-0 hover:brightness-125"
+            style={{ borderColor: "#5A4A3C", color: "#9C8C79" }}
+            aria-label={`Edit ${item.name}`}
+          >
+            <PencilLine size={14} />
           </button>
         </div>
-      ) : (
-        <input
-          type="number"
-          min={0}
-          value={batchValue}
-          // Blank stays blank instead of snapping to 0 — forcing a "0" into
-          // a controlled number input is what caused the next keystroke to
-          // land in front of it (typing "5" against a displayed "0" gives
-          // "05"). parseFloat (not parseInt) so a fractional closing count
-          // like "2.5" isn't silently truncated to 2.
-          onChange={(e) => onBatchChange(item.id, e.target.value === "" ? "" : parseFloat(e.target.value))}
-          className="w-20 font-mono text-lg text-center rounded-md border py-1.5 bg-transparent focus:outline-none focus:ring-2"
-          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
-        />
-      )}
-
-      <button
-        onClick={() => onAddStock(item.id)}
-        className="w-8 h-8 rounded-full flex items-center justify-center border shrink-0 hover:brightness-125"
-        style={{ borderColor: "#5A4A3C", color: "#9C8C79" }}
-        aria-label={`Add stock for ${item.name}`}
-        title="Add stock — just picked some up?"
-      >
-        <PackagePlus size={14} />
-      </button>
-
-      {isPerishable && (
-        <button
-          onClick={() => onEditBatches(item.id)}
-          className="w-8 h-8 rounded-full flex items-center justify-center border shrink-0 hover:brightness-125"
-          style={{ borderColor: "#5A4A3C", color: "#9C8C79" }}
-          aria-label={`Manage batches for ${item.name}`}
-          title="Batches — track expiration, FIFO"
-        >
-          <CalendarClock size={14} />
-        </button>
-      )}
-
-      <button
-        onClick={() => onEdit(item.id)}
-        className="w-8 h-8 rounded-full flex items-center justify-center border shrink-0 hover:brightness-125"
-        style={{ borderColor: "#5A4A3C", color: "#9C8C79" }}
-        aria-label={`Edit ${item.name}`}
-      >
-        <PencilLine size={14} />
-      </button>
+      </div>
     </div>
   );
 }
@@ -317,7 +326,7 @@ function AddItemForm({ onAdd, onCancel }: AddItemFormProps) {
       <div className="font-mono text-xs uppercase tracking-widest mb-4" style={{ color: "#C1663B" }}>
         New Stock Item
       </div>
-      <div className="grid grid-cols-2 gap-3 mb-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         <input
           placeholder="Item name"
           value={name}
@@ -445,7 +454,7 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
       <div className="font-mono text-xs uppercase tracking-widest mb-4" style={{ color: "#C1663B" }}>
         Edit {item.name}
       </div>
-      <div className="grid grid-cols-2 gap-3 mb-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         <input
           placeholder="Item name"
           value={name}
@@ -599,7 +608,7 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
       </p>
 
       {isPerishable && (
-        <div className="flex items-center gap-1 p-1 rounded-lg border w-fit mb-3" style={{ borderColor: "#3A2F27" }}>
+        <div className="flex items-center gap-1 p-1 rounded-lg border overflow-x-auto max-w-full mb-3" style={{ borderColor: "#3A2F27" }}>
           <button
             onClick={() => setAsBatch(false)}
             className="px-3 py-1.5 rounded-md text-xs font-mono transition-colors"
@@ -623,7 +632,7 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 mb-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
           Adding how many {item.unit}?
           <input
@@ -827,7 +836,7 @@ function BatchEditor({ item, batches, onAddBatch, onEditBatch, onDeleteBatch, on
         <div className="font-mono text-[10px] uppercase tracking-widest mb-2" style={{ color: "#9C8C79" }}>
           Add another batch
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
             Quantity ({item.unit})
             <input
@@ -928,7 +937,7 @@ function SpreadsheetView({ items, displayMode, onEdit }: SpreadsheetViewProps) {
   ];
 
   return (
-    <div className="rounded-lg border overflow-hidden" style={{ borderColor: "#3A2F27" }}>
+    <div className="rounded-lg border overflow-x-auto" style={{ borderColor: "#3A2F27" }}>
       <table className="w-full border-collapse font-mono text-sm">
         <thead>
           <tr style={{ backgroundColor: "#241C17" }}>
@@ -2304,48 +2313,49 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
         {/* Page switcher */}
         <div className="flex items-center justify-between gap-3 mb-8 flex-wrap">
           <div
-            className="flex items-center gap-1 p-1 rounded-lg border w-fit"
+            className="flex items-center gap-1 p-1 rounded-lg border overflow-x-auto max-w-full"
             style={{ borderColor: "#3A2F27", backgroundColor: "#1F1712" }}
           >
             <button
               onClick={() => setPage("update")}
-              className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-2 transition-colors"
+              className="px-3 sm:px-4 py-2 rounded-md text-sm font-mono flex items-center justify-center gap-2 transition-colors shrink-0"
               style={{
                 backgroundColor: page === "update" ? "#2A211C" : "transparent",
                 color: page === "update" ? "#EDE3D3" : "#6E6153",
               }}
             >
-              <PencilLine size={14} /> Update
+              <PencilLine size={14} /> <span className="hidden sm:inline">Update</span>
             </button>
             <button
               onClick={() => setPage("spreadsheet")}
-              className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-2 transition-colors"
+              className="px-3 sm:px-4 py-2 rounded-md text-sm font-mono flex items-center justify-center gap-2 transition-colors shrink-0"
               style={{
                 backgroundColor: page === "spreadsheet" ? "#2A211C" : "transparent",
                 color: page === "spreadsheet" ? "#EDE3D3" : "#6E6153",
               }}
             >
-              <Table2 size={14} /> Spreadsheet
+              <Table2 size={14} /> <span className="hidden sm:inline">Spreadsheet</span>
             </button>
             <button
               onClick={() => setPage("recipes")}
-              className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-2 transition-colors"
+              className="px-3 sm:px-4 py-2 rounded-md text-sm font-mono flex items-center justify-center gap-2 transition-colors shrink-0"
               style={{
                 backgroundColor: page === "recipes" ? "#2A211C" : "transparent",
                 color: page === "recipes" ? "#EDE3D3" : "#6E6153",
               }}
             >
-              {tier === "standard" ? <Lock size={14} /> : <BookOpen size={14} />} Recipes
+              {tier === "standard" ? <Lock size={14} /> : <BookOpen size={14} />}{" "}
+              <span className="hidden sm:inline">Recipes</span>
             </button>
             <button
               onClick={() => setPage("alerts")}
-              className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-2 transition-colors"
+              className="px-3 sm:px-4 py-2 rounded-md text-sm font-mono flex items-center justify-center gap-2 transition-colors shrink-0"
               style={{
                 backgroundColor: page === "alerts" ? "#2A211C" : "transparent",
                 color: page === "alerts" ? "#EDE3D3" : "#6E6153",
               }}
             >
-              <Bell size={14} /> Alerts
+              <Bell size={14} /> <span className="hidden sm:inline">Alerts</span>
             </button>
           </div>
 
@@ -2539,7 +2549,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
           const Icon = cat.icon;
           return (
             <div key={cat.id} className="mb-8">
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-center gap-2 mb-3">
                 <Icon size={16} style={{ color: "#C1663B" }} />
                 <h2
                   className="font-semibold uppercase tracking-wide text-sm"
@@ -2548,7 +2558,6 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
                   {cat.label}
                 </h2>
               </div>
-              <p className="text-xs mb-2" style={{ color: "#6E6153" }}>{cat.note}</p>
               <div>
                 {catItems.map((item) => (
                   <ItemRow
@@ -2883,7 +2892,7 @@ function AdminShopDetail({ shop, onBack, onTierChanged }: AdminShopDetailProps) 
               No items.
             </p>
           ) : (
-            <div className="rounded-lg border overflow-hidden mb-8" style={{ borderColor: "#3A2F27" }}>
+            <div className="rounded-lg border overflow-x-auto mb-8" style={{ borderColor: "#3A2F27" }}>
               <table className="w-full border-collapse font-mono text-sm">
                 <thead>
                   <tr style={{ backgroundColor: "#241C17" }}>
@@ -3049,7 +3058,7 @@ function AdminDashboard({ onLogout }: AdminDashboardProps) {
               </div>
             )}
             {!loading && shops.length > 0 && (
-              <div className="rounded-lg border overflow-hidden" style={{ borderColor: "#3A2F27" }}>
+              <div className="rounded-lg border overflow-x-auto" style={{ borderColor: "#3A2F27" }}>
                 <table className="w-full border-collapse font-mono text-sm">
                   <thead>
                     <tr style={{ backgroundColor: "#241C17" }}>

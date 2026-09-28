@@ -112,7 +112,7 @@ export async function GET(request: Request) {
     const lines = dueBatches
       .map((b) => `${b.name}: ${b.quantity} ${b.unit} (expires ${b.expiresOn})`)
       .join("; ");
-    const body = `Ground Work: ${dueBatches.length} batch${dueBatches.length === 1 ? "" : "es"} expiring soon — ${lines}.`;
+    const body = `GroundWorks Inventory: ${dueBatches.length} batch${dueBatches.length === 1 ? "" : "es"} expiring soon — ${lines}. Reply STOP to opt out.`;
 
     const results = await Promise.all(phones.map((phone) => sendSms(phone, body)));
     const anySucceeded = results.some((r) => r.ok);

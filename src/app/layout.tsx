@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Ground Work — Inventory Tracker",
+  title: "GroundWorks Inventory",
   description: "Shift-ticket style back-of-house inventory tracker for coffee shops.",
 };
 

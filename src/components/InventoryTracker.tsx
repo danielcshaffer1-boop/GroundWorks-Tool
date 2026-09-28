@@ -1644,7 +1644,7 @@ function LoginScreen() {
         style={{ borderColor: "#3A2F27", backgroundColor: "#211A15" }}
       >
         <div className="font-mono text-xs uppercase tracking-[0.25em] mb-2" style={{ color: "#C1663B" }}>
-          Ground Work
+          GroundWorks
         </div>
         <h1
           style={{
@@ -2329,7 +2329,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
                 lineHeight: 1,
               }}
             >
-              GROUND WORK
+              GROUNDWORKS
             </h1>
             <p className="text-sm mt-2" style={{ color: "#9C8C79" }}>
               {shopName}
@@ -2730,7 +2730,7 @@ function NoPlanScreen({ shopName, onLogout }: NoPlanScreenProps) {
         style={{ borderColor: "#3A2F27", backgroundColor: "#211A15" }}
       >
         <div className="font-mono text-xs uppercase tracking-[0.25em] mb-2" style={{ color: "#C1663B" }}>
-          Ground Work
+          GroundWorks
         </div>
         <h1
           style={{ fontFamily: "'Barlow Condensed', sans-serif", color: "#EDE3D3", fontSize: 26, fontWeight: 700 }}
@@ -3053,7 +3053,7 @@ function AdminDashboard({ onLogout }: AdminDashboardProps) {
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>
             <div className="font-mono text-xs uppercase tracking-[0.25em] mb-2" style={{ color: "#C1663B" }}>
-              Ground Work
+              GroundWorks
             </div>
             <h1
               style={{

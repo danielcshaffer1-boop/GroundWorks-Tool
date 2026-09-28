@@ -88,7 +88,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "SMS isn't configured yet." }, { status: 500 });
   }
 
-  const body = `Ground Work: ${record.name} is now ${STATUS_LABEL[newStatus]} — ${record.count} ${record.unit} left (threshold ${record.threshold}).`;
+  const body = `GroundWorks Inventory: ${record.name} is now ${STATUS_LABEL[newStatus]} — ${record.count} ${record.unit} left (threshold ${record.threshold}). Reply STOP to opt out.`;
 
   const results = await Promise.all(
     (recipients as { phone: string }[]).map(({ phone }) =>

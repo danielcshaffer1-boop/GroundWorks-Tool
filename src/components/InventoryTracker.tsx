@@ -315,8 +315,8 @@ interface AddItemFormProps {
 function AddItemForm({ onAdd, onCancel }: AddItemFormProps) {
   const [name, setName] = useState("");
   const [unit, setUnit] = useState("");
-  const [threshold, setThreshold] = useState(3);
-  const [count, setCount] = useState(0);
+  const [threshold, setThreshold] = useState<number | "">(3);
+  const [count, setCount] = useState<number | "">(0);
   const [category, setCategory] = useState<CategoryId>("dry");
   const [unitSize, setUnitSize] = useState("");
   const [unitMeasure, setUnitMeasure] = useState("");
@@ -358,7 +358,11 @@ function AddItemForm({ onAdd, onCancel }: AddItemFormProps) {
           <input
             type="number"
             value={count}
-            onChange={(e) => setCount(parseInt(e.target.value, 10) || 0)}
+            // Blank stays blank instead of snapping to 0 — forcing "0" into
+            // a controlled number input is what causes the next keystroke
+            // to land in front of it (typing "5" against a displayed "0"
+            // gives "05"). Resolved back to 0 only at submit time.
+            onChange={(e) => setCount(e.target.value === "" ? "" : parseInt(e.target.value, 10))}
             className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
             style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
           />
@@ -368,7 +372,7 @@ function AddItemForm({ onAdd, onCancel }: AddItemFormProps) {
           <input
             type="number"
             value={threshold}
-            onChange={(e) => setThreshold(parseInt(e.target.value, 10) || 0)}
+            onChange={(e) => setThreshold(e.target.value === "" ? "" : parseInt(e.target.value, 10))}
             className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
             style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
           />
@@ -414,8 +418,8 @@ function AddItemForm({ onAdd, onCancel }: AddItemFormProps) {
             onAdd({
               name: name.trim(),
               unit: unit.trim() || "units",
-              count,
-              threshold,
+              count: count === "" ? 0 : count,
+              threshold: threshold === "" ? 0 : threshold,
               category,
               unitSize: unitSize === "" ? null : parseFloat(unitSize),
               unitMeasure: unitMeasure.trim() || null,
@@ -443,8 +447,8 @@ interface EditItemFormProps {
 function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
   const [name, setName] = useState(item.name);
   const [unit, setUnit] = useState(item.unit);
-  const [threshold, setThreshold] = useState(item.threshold);
-  const [count, setCount] = useState(item.count);
+  const [threshold, setThreshold] = useState<number | "">(item.threshold);
+  const [count, setCount] = useState<number | "">(item.count);
   const [category, setCategory] = useState<CategoryId>(item.category);
   const [unitSize, setUnitSize] = useState(item.unitSize === null ? "" : String(item.unitSize));
   const [unitMeasure, setUnitMeasure] = useState(item.unitMeasure ?? "");
@@ -486,7 +490,10 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
           <input
             type="number"
             value={count}
-            onChange={(e) => setCount(parseInt(e.target.value, 10) || 0)}
+            // Blank stays blank instead of snapping to 0 (see AddItemForm)
+            // — resolved back to the item's real count only at save time,
+            // never destructively defaulting a real item's stock to zero.
+            onChange={(e) => setCount(e.target.value === "" ? "" : parseInt(e.target.value, 10))}
             className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
             style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
           />
@@ -496,7 +503,7 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
           <input
             type="number"
             value={threshold}
-            onChange={(e) => setThreshold(parseInt(e.target.value, 10) || 0)}
+            onChange={(e) => setThreshold(e.target.value === "" ? "" : parseInt(e.target.value, 10))}
             className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
             style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
           />
@@ -546,8 +553,8 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
               onSave(item.id, {
                 name: name.trim(),
                 unit: unit.trim() || "units",
-                count,
-                threshold,
+                count: count === "" ? item.count : count,
+                threshold: threshold === "" ? item.threshold : threshold,
                 category,
                 unitSize: unitSize === "" ? null : parseFloat(unitSize),
                 unitMeasure: unitMeasure.trim() || null,
@@ -1035,6 +1042,11 @@ interface IngredientRowProps {
 
 function IngredientRow({ ingredient, items, onChangeAmount, onChangeItem, onRemove }: IngredientRowProps) {
   const item = items.find((i) => i.id === ingredient.itemId);
+  // Local draft so backspacing to empty can actually show empty, rather
+  // than snapping to 0 and prefixing the next digit (see AddItemForm).
+  // Saves (onChangeAmount) fire only once the field is a real number
+  // again — a blank field just doesn't write anything yet.
+  const [draft, setDraft] = useState(String(ingredient.amount));
   return (
     <div className="flex items-center gap-2 py-1.5">
       <select
@@ -1052,8 +1064,14 @@ function IngredientRow({ ingredient, items, onChangeAmount, onChangeItem, onRemo
       <input
         type="number"
         step="0.1"
-        value={ingredient.amount}
-        onChange={(e) => onChangeAmount(parseFloat(e.target.value) || 0)}
+        value={draft}
+        onChange={(e) => {
+          const value = e.target.value;
+          setDraft(value);
+          if (value === "") return;
+          const parsed = parseFloat(value);
+          if (!Number.isNaN(parsed)) onChangeAmount(parsed);
+        }}
         className="w-16 rounded-md border px-2 py-1.5 text-sm text-center font-mono bg-transparent focus:outline-none"
         style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
       />

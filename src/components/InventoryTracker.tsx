@@ -961,6 +961,14 @@ function BatchEditor({ item, batches, onAddBatch, onEditBatch, onDeleteBatch, on
             />
           </label>
         </div>
+        {/* Same clarifying line Add Stock's batch toggle shows — this is
+            new stock coming in, added on top of the current count (and of
+            any untracked stock), never carved out of what's already there. */}
+        {newQty !== "" && newQty > 0 && (
+          <p className="text-xs font-mono mt-3" style={{ color: "#7A8F5E" }}>
+            New total: {trimNumber(item.count + newQty)} {item.unit} · tracked as its own batch, consumed first
+          </p>
+        )}
         <div className="flex justify-end mt-3">
           <button
             onClick={() => {

@@ -21,6 +21,7 @@ import {
   Bell,
   PackagePlus,
   CalendarClock,
+  ChevronDown,
   type LucideIcon,
 } from "lucide-react";
 import type {
@@ -1879,6 +1880,19 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
   const [actionError, setActionError] = useState("");
   const [pendingSaves, setPendingSaves] = useState(0);
   const [portalLoading, setPortalLoading] = useState(false);
+  // Which category sections are collapsed on the Update page — session-only
+  // (resets on reload), so a shop with a lot of line items can hide
+  // categories they aren't touching this shift without losing any data.
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<CategoryId>>(new Set());
+
+  function toggleCategory(catId: CategoryId) {
+    setCollapsedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(catId)) next.delete(catId);
+      else next.add(catId);
+      return next;
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -2669,9 +2683,15 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
           const catItems = items.filter((i) => i.category === cat.id);
           if (catItems.length === 0) return null;
           const Icon = cat.icon;
+          const collapsed = collapsedCategories.has(cat.id);
           return (
             <div key={cat.id} className="mb-8">
-              <div className="flex items-center gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => toggleCategory(cat.id)}
+                className="w-full flex items-center gap-2 mb-3"
+                aria-expanded={!collapsed}
+              >
                 <Icon size={16} style={{ color: "#C1663B" }} />
                 <h2
                   className="font-semibold uppercase tracking-wide text-sm"
@@ -2679,24 +2699,38 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
                 >
                   {cat.label}
                 </h2>
-              </div>
-              <div>
-                {catItems.map((item) => (
-                  <ItemRow
-                    key={item.id}
-                    item={item}
-                    mode={mode}
-                    displayMode={displayMode}
-                    batches={perishableBatches.filter((b) => b.itemId === item.id)}
-                    onAdjust={adjustQuick}
-                    onBatchChange={changeBatchDraft}
-                    batchValue={batchDraft[item.id] ?? item.count}
-                    onEdit={jumpToEdit}
-                    onAddStock={setAddingStockId}
-                    onEditBatches={setEditingBatchesItemId}
-                  />
-                ))}
-              </div>
+                <span className="text-xs font-mono" style={{ color: "#6E6153" }}>
+                  ({catItems.length})
+                </span>
+                <ChevronDown
+                  size={16}
+                  style={{
+                    color: "#6E6153",
+                    marginLeft: "auto",
+                    transform: collapsed ? "rotate(-90deg)" : undefined,
+                    transition: "transform 120ms ease",
+                  }}
+                />
+              </button>
+              {!collapsed && (
+                <div>
+                  {catItems.map((item) => (
+                    <ItemRow
+                      key={item.id}
+                      item={item}
+                      mode={mode}
+                      displayMode={displayMode}
+                      batches={perishableBatches.filter((b) => b.itemId === item.id)}
+                      onAdjust={adjustQuick}
+                      onBatchChange={changeBatchDraft}
+                      batchValue={batchDraft[item.id] ?? item.count}
+                      onEdit={jumpToEdit}
+                      onAddStock={setAddingStockId}
+                      onEditBatches={setEditingBatchesItemId}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}

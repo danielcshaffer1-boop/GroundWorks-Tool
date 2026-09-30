@@ -193,6 +193,10 @@ function ItemRow({
   const status = getStatus(mode === "batch" ? { ...item, count: batchValue === "" ? item.count : batchValue } : item);
   const meta = STATUS_META[status];
   const qty = displayQuantity(item, displayMode, item.count);
+  // Same condition displayQuantity uses to decide whether Amount mode
+  // actually applies to this item (some items have no unitSize/unitMeasure
+  // set, so Amount mode has nothing to convert to and falls back to Count).
+  const showingMeasurement = displayMode === "measurement" && !!item.unitSize && !!item.unitMeasure;
   const isPerishable = item.category === "perishable";
   // Nearest-expiring batch, if any — shown as a quick heads-up in the
   // subtitle without needing to open the batch editor.
@@ -258,19 +262,42 @@ function ItemRow({
             </button>
           </div>
         ) : (
-          <input
-            type="number"
-            min={0}
-            value={batchValue}
-            // Blank stays blank instead of snapping to 0 — forcing a "0" into
-            // a controlled number input is what caused the next keystroke to
-            // land in front of it (typing "5" against a displayed "0" gives
-            // "05"). parseFloat (not parseInt) so a fractional closing count
-            // like "2.5" isn't silently truncated to 2.
-            onChange={(e) => onBatchChange(item.id, e.target.value === "" ? "" : parseFloat(e.target.value))}
-            className="w-20 font-mono text-lg text-center rounded-md border py-1.5 bg-transparent focus:outline-none focus:ring-2"
-            style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
-          />
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              min={0}
+              step={showingMeasurement ? "0.01" : "1"}
+              // batchValue is always stored in the item's native stocking
+              // unit (what saveBatch/resolveBatchCount compare against
+              // item.count) — in Amount mode we convert it to the
+              // measurement unit just for display, same conversion
+              // displayQuantity does for Quick Log's number.
+              value={batchValue === "" ? "" : showingMeasurement ? trimNumber(batchValue * item.unitSize!) : batchValue}
+              // Blank stays blank instead of snapping to 0 — forcing a "0" into
+              // a controlled number input is what caused the next keystroke to
+              // land in front of it (typing "5" against a displayed "0" gives
+              // "05"). parseFloat (not parseInt) so a fractional closing count
+              // like "2.5" isn't silently truncated to 2.
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw === "") {
+                  onBatchChange(item.id, "");
+                  return;
+                }
+                const parsed = parseFloat(raw);
+                if (Number.isNaN(parsed)) return;
+                // Convert back to the native stocking unit before storing,
+                // so a Closing Count typed in Amount mode still saves as
+                // the same native count Quick Log and everything else uses.
+                onBatchChange(item.id, Math.max(0, showingMeasurement ? parsed / item.unitSize! : parsed));
+              }}
+              className="w-20 font-mono text-lg text-center rounded-md border py-1.5 bg-transparent focus:outline-none focus:ring-2"
+              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+            />
+            <span className="text-[9px] uppercase tracking-wide" style={{ color: "#6E6153" }}>
+              {showingMeasurement ? item.unitMeasure : item.unit}
+            </span>
+          </div>
         )}
 
         <div className="flex items-center gap-2 shrink-0">

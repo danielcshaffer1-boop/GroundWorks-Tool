@@ -134,6 +134,10 @@ function formatDaysUntil(days: number): string {
   return `${days}d left`;
 }
 
+function formatShortDate(isoTimestamp: string): string {
+  return new Date(isoTimestamp).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 // ---- Stamp badge (signature element) --------------------------------------
 
 function StatusStamp({ status }: { status: Status }) {
@@ -581,7 +585,7 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
 
 interface AddStockFormProps {
   item: InventoryItem;
-  onAdd: (id: number, nativeAmount: number, batchExpiresOn?: string) => void;
+  onAdd: (id: number, nativeAmount: number, batchExpiresOn?: string, batchLabel?: string) => void;
   onCancel: () => void;
 }
 
@@ -597,6 +601,7 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
   // expiration date, consumed FIFO ahead of the untracked pool.
   const [asBatch, setAsBatch] = useState(false);
   const [expiresOn, setExpiresOn] = useState(todayISO());
+  const [label, setLabel] = useState("");
 
   const isPerishable = item.category === "perishable";
   const hasSize = item.unitSize !== null && !!item.unitMeasure;
@@ -680,6 +685,20 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
             />
           </label>
         )}
+        {asBatch && (
+          <label className="flex flex-col gap-1 text-xs font-mono col-span-2" style={{ color: "#9C8C79" }}>
+            Label (optional)
+            <input
+              type="text"
+              maxLength={60}
+              placeholder="e.g. Sysco delivery, walk-in, lot #4021"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+            />
+          </label>
+        )}
       </div>
       {sizeDiffers && (
         <p className="text-[11px] font-mono mb-3" style={{ color: "#C79A3E" }}>
@@ -700,7 +719,10 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
           <X size={14} /> Cancel
         </button>
         <button
-          onClick={() => canSubmit && onAdd(item.id, nativeAdd, asBatch ? expiresOn : undefined)}
+          onClick={() =>
+            canSubmit &&
+            onAdd(item.id, nativeAdd, asBatch ? expiresOn : undefined, asBatch ? label : undefined)
+          }
           disabled={!canSubmit}
           className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-1.5 font-semibold disabled:opacity-40"
           style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
@@ -722,65 +744,95 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
 interface BatchEditorRowProps {
   batch: Batch;
   unit: string;
-  onSave: (patch: { quantity?: number; expiresOn?: string }) => void;
+  isNext: boolean;
+  onSave: (patch: { quantity?: number; expiresOn?: string; label?: string | null }) => void;
   onDelete: () => void;
 }
 
-function BatchEditorRow({ batch, unit, onSave, onDelete }: BatchEditorRowProps) {
+function BatchEditorRow({ batch, unit, isNext, onSave, onDelete }: BatchEditorRowProps) {
   const [quantity, setQuantity] = useState(String(batch.quantity));
   const [expiresOn, setExpiresOn] = useState(batch.expiresOn);
+  const [label, setLabel] = useState(batch.label ?? "");
 
   const quantityNum = parseFloat(quantity);
-  const dirty = (quantity !== "" && quantityNum !== batch.quantity) || expiresOn !== batch.expiresOn;
+  const dirty =
+    (quantity !== "" && quantityNum !== batch.quantity) ||
+    expiresOn !== batch.expiresOn ||
+    label !== (batch.label ?? "");
   const days = daysUntilDate(batch.expiresOn);
 
   function save() {
-    const patch: { quantity?: number; expiresOn?: string } = {};
+    const patch: { quantity?: number; expiresOn?: string; label?: string | null } = {};
     if (quantity !== "" && quantityNum !== batch.quantity) patch.quantity = Math.max(0, quantityNum);
     if (expiresOn !== batch.expiresOn) patch.expiresOn = expiresOn;
+    if (label !== (batch.label ?? "")) patch.label = label.trim() || null;
     if (Object.keys(patch).length > 0) onSave(patch);
   }
 
   return (
-    <div className="flex items-center gap-2 rounded-lg border px-3 py-2 flex-wrap" style={{ borderColor: "#3A2F27" }}>
-      <input
-        type="number"
-        min={0}
-        step="0.1"
-        value={quantity}
-        onChange={(e) => setQuantity(e.target.value)}
-        className="w-20 rounded-md border px-2 py-1.5 text-sm font-mono bg-transparent focus:outline-none"
-        style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
-      />
-      <span className="text-xs font-mono" style={{ color: "#6E6153" }}>
-        {unit}
-      </span>
-      <input
-        type="date"
-        value={expiresOn}
-        onChange={(e) => setExpiresOn(e.target.value)}
-        className="rounded-md border px-2 py-1.5 text-sm font-mono bg-transparent focus:outline-none"
-        style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
-      />
-      <span
-        className="text-[10px] font-mono"
-        style={{ color: days < 0 ? "#B0492F" : days <= 3 ? "#C79A3E" : "#6E6153" }}
-      >
-        {formatDaysUntil(days)}
-      </span>
-      <div className="flex items-center gap-1 ml-auto">
-        {dirty && (
-          <button
-            onClick={save}
-            className="text-xs px-2 py-1 rounded border font-mono"
-            style={{ borderColor: "#7A8F5E", color: "#7A8F5E" }}
+    <div className="rounded-lg border px-3 py-2" style={{ borderColor: isNext ? "#7A8F5E" : "#3A2F27" }}>
+      <div className="flex items-center gap-2 flex-wrap mb-1.5">
+        <input
+          type="number"
+          min={0}
+          step="0.1"
+          value={quantity}
+          onChange={(e) => setQuantity(e.target.value)}
+          className="w-20 rounded-md border px-2 py-1.5 text-sm font-mono bg-transparent focus:outline-none"
+          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+        />
+        <span className="text-xs font-mono" style={{ color: "#6E6153" }}>
+          {unit}
+        </span>
+        <input
+          type="date"
+          value={expiresOn}
+          onChange={(e) => setExpiresOn(e.target.value)}
+          className="rounded-md border px-2 py-1.5 text-sm font-mono bg-transparent focus:outline-none"
+          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+        />
+        <span
+          className="text-[10px] font-mono"
+          style={{ color: days < 0 ? "#B0492F" : days <= 3 ? "#C79A3E" : "#6E6153" }}
+        >
+          {formatDaysUntil(days)}
+        </span>
+        {isNext && (
+          <span
+            className="text-[9px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded"
+            style={{ color: "#7A8F5E", border: "1px solid #7A8F5E" }}
           >
-            Save
-          </button>
+            Used next
+          </span>
         )}
-        <button onClick={onDelete} style={{ color: "#6E6153" }} aria-label="Delete batch">
-          <Trash2 size={14} />
-        </button>
+        <div className="flex items-center gap-1 ml-auto">
+          {dirty && (
+            <button
+              onClick={save}
+              className="text-xs px-2 py-1 rounded border font-mono"
+              style={{ borderColor: "#7A8F5E", color: "#7A8F5E" }}
+            >
+              Save
+            </button>
+          )}
+          <button onClick={onDelete} style={{ color: "#6E6153" }} aria-label="Delete batch">
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          maxLength={60}
+          placeholder="Add a label — e.g. Sysco delivery, walk-in, lot #4021"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          className="flex-1 min-w-0 rounded-md border px-2 py-1.5 text-xs font-mono bg-transparent focus:outline-none"
+          style={{ borderColor: "#3A2F27", color: "#EDE3D3" }}
+        />
+        <span className="text-[10px] font-mono shrink-0" style={{ color: "#6E6153" }}>
+          added {formatShortDate(batch.createdAt)}
+        </span>
       </div>
     </div>
   );
@@ -789,8 +841,8 @@ function BatchEditorRow({ batch, unit, onSave, onDelete }: BatchEditorRowProps) 
 interface BatchEditorProps {
   item: InventoryItem;
   batches: Batch[];
-  onAddBatch: (itemId: number, quantity: number, expiresOn: string) => void;
-  onEditBatch: (id: number, patch: { quantity?: number; expiresOn?: string }) => void;
+  onAddBatch: (itemId: number, quantity: number, expiresOn: string, label?: string) => void;
+  onEditBatch: (id: number, patch: { quantity?: number; expiresOn?: string; label?: string | null }) => void;
   onDeleteBatch: (id: number) => void;
   onClose: () => void;
 }
@@ -798,6 +850,7 @@ interface BatchEditorProps {
 function BatchEditor({ item, batches, onAddBatch, onEditBatch, onDeleteBatch, onClose }: BatchEditorProps) {
   const [newQty, setNewQty] = useState<number | "">("");
   const [newExpiresOn, setNewExpiresOn] = useState(todayISO());
+  const [newLabel, setNewLabel] = useState("");
 
   const trackedTotal = batches.reduce((sum, b) => sum + b.quantity, 0);
   const untracked = Math.max(0, item.count - trackedTotal);
@@ -823,11 +876,12 @@ function BatchEditor({ item, batches, onAddBatch, onEditBatch, onDeleteBatch, on
         </p>
       ) : (
         <div className="flex flex-col gap-2 mb-2">
-          {batches.map((b) => (
+          {batches.map((b, index) => (
             <BatchEditorRow
               key={b.id}
               batch={b}
               unit={item.unit}
+              isNext={index === 0}
               onSave={(patch) => onEditBatch(b.id, patch)}
               onDelete={() => onDeleteBatch(b.id)}
             />
@@ -867,13 +921,26 @@ function BatchEditor({ item, batches, onAddBatch, onEditBatch, onDeleteBatch, on
               style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
             />
           </label>
+          <label className="flex flex-col gap-1 text-xs font-mono col-span-1 sm:col-span-2" style={{ color: "#9C8C79" }}>
+            Label (optional)
+            <input
+              type="text"
+              maxLength={60}
+              placeholder="e.g. Sysco delivery, walk-in, lot #4021"
+              value={newLabel}
+              onChange={(e) => setNewLabel(e.target.value)}
+              className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+            />
+          </label>
         </div>
         <div className="flex justify-end mt-3">
           <button
             onClick={() => {
               if (newQty === "" || newQty <= 0 || !newExpiresOn) return;
-              onAddBatch(item.id, newQty, newExpiresOn);
+              onAddBatch(item.id, newQty, newExpiresOn, newLabel);
               setNewQty("");
+              setNewLabel("");
             }}
             disabled={newQty === "" || newQty <= 0}
             className="px-4 py-2 rounded-md text-sm font-mono font-semibold flex items-center gap-1.5 disabled:opacity-40"
@@ -2008,7 +2075,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
   // size than what's stocked, e.g. 32oz cartons when tracking in 16oz).
   // batchExpiresOn is set only when adding as a tracked batch rather than
   // plain individual units — see AddStockForm.
-  async function addStock(id: number, nativeAmount: number, batchExpiresOn?: string) {
+  async function addStock(id: number, nativeAmount: number, batchExpiresOn?: string, batchLabel?: string) {
     const current = items.find((i) => i.id === id);
     if (!current) return;
     const nextCount = current.count + nativeAmount;
@@ -2025,7 +2092,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
     }
     if (batchExpiresOn) {
       try {
-        const inserted = await withSaving(() => insertBatch(id, nativeAmount, batchExpiresOn));
+        const inserted = await withSaving(() => insertBatch(id, nativeAmount, batchExpiresOn, batchLabel));
         setPerishableBatches((prev) => [...prev, inserted].sort((a, b) => a.expiresOn.localeCompare(b.expiresOn)));
       } catch {
         // The count already saved correctly above — this only means the
@@ -2046,7 +2113,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
   // because setItems() only ever updated local state — nothing here was
   // actually writing the new count to the database.)
 
-  async function addBatch(itemId: number, quantity: number, expiresOn: string) {
+  async function addBatch(itemId: number, quantity: number, expiresOn: string, label?: string) {
     const current = items.find((i) => i.id === itemId);
     if (!current) return;
     const nextCount = current.count + quantity;
@@ -2062,14 +2129,14 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
       return;
     }
     try {
-      const inserted = await withSaving(() => insertBatch(itemId, quantity, expiresOn));
+      const inserted = await withSaving(() => insertBatch(itemId, quantity, expiresOn, label));
       setPerishableBatches((prev) => [...prev, inserted].sort((a, b) => a.expiresOn.localeCompare(b.expiresOn)));
     } catch {
       setActionError("Stock was added, but the expiration date couldn't be saved. Try adding the batch again.");
     }
   }
 
-  async function editBatch(id: number, patch: { quantity?: number; expiresOn?: string }) {
+  async function editBatch(id: number, patch: { quantity?: number; expiresOn?: string; label?: string | null }) {
     const prevBatches = perishableBatches;
     const batch = perishableBatches.find((b) => b.id === id);
     if (!batch) return;

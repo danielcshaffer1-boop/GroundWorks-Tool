@@ -15,6 +15,7 @@ interface DueBatchRow {
   item_id: number;
   quantity: number;
   expires_on: string;
+  label: string | null;
   items: {
     name: string;
     unit: string;
@@ -44,7 +45,9 @@ export async function GET(request: Request) {
   // a fixed value, so it can't be pushed into the query itself.
   const { data: batches, error } = await supabase
     .from("batches")
-    .select("id, item_id, quantity, expires_on, items!inner(name, unit, shop_id, shops!inner(expiration_alert_days))")
+    .select(
+      "id, item_id, quantity, expires_on, label, items!inner(name, unit, shop_id, shops!inner(expiration_alert_days))"
+    )
     .eq("expiration_alert_sent", false);
 
   if (error) {
@@ -52,7 +55,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Couldn't load batches." }, { status: 500 });
   }
 
-  const dueByShop = new Map<string, { batchId: number; name: string; quantity: number; unit: string; expiresOn: string }[]>();
+  const dueByShop = new Map<
+    string,
+    { batchId: number; name: string; quantity: number; unit: string; expiresOn: string; label: string | null }[]
+  >();
 
   for (const row of (batches ?? []) as unknown as DueBatchRow[]) {
     const shopMeta = Array.isArray(row.items.shops) ? row.items.shops[0] : row.items.shops;
@@ -61,7 +67,14 @@ export async function GET(request: Request) {
 
     const shopId = row.items.shop_id;
     const list = dueByShop.get(shopId) ?? [];
-    list.push({ batchId: row.id, name: row.items.name, quantity: row.quantity, unit: row.items.unit, expiresOn: row.expires_on });
+    list.push({
+      batchId: row.id,
+      name: row.items.name,
+      quantity: row.quantity,
+      unit: row.items.unit,
+      expiresOn: row.expires_on,
+      label: row.label,
+    });
     dueByShop.set(shopId, list);
   }
 
@@ -110,7 +123,7 @@ export async function GET(request: Request) {
     // One text per shop per run, not one per batch — a shop with several
     // things expiring at once shouldn't get spammed.
     const lines = dueBatches
-      .map((b) => `${b.name}: ${b.quantity} ${b.unit} (expires ${b.expiresOn})`)
+      .map((b) => `${b.name}${b.label ? ` (${b.label})` : ""}: ${b.quantity} ${b.unit} (expires ${b.expiresOn})`)
       .join("; ");
     const body = `GroundWorks Inventory: ${dueBatches.length} batch${dueBatches.length === 1 ? "" : "es"} expiring soon — ${lines}. Reply STOP to opt out.`;
 

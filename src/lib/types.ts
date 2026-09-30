@@ -41,6 +41,8 @@ export interface Batch {
   itemId: number;
   quantity: number;
   expiresOn: string; // "YYYY-MM-DD"
+  label: string | null;
+  createdAt: string;
 }
 
 export interface MenuItem {

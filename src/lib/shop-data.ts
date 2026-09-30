@@ -318,10 +318,19 @@ interface BatchRow {
   item_id: number;
   quantity: number;
   expires_on: string;
+  label: string | null;
+  created_at: string;
 }
 
 function fromBatchRow(row: BatchRow): Batch {
-  return { id: row.id, itemId: row.item_id, quantity: row.quantity, expiresOn: row.expires_on };
+  return {
+    id: row.id,
+    itemId: row.item_id,
+    quantity: row.quantity,
+    expiresOn: row.expires_on,
+    label: row.label,
+    createdAt: row.created_at,
+  };
 }
 
 // All of a shop's batches in one query (RLS already scopes this to the
@@ -332,19 +341,24 @@ export async function fetchBatchesForShop(shopId: string): Promise<Batch[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("batches")
-    .select("id, item_id, quantity, expires_on, items!inner(shop_id)")
+    .select("id, item_id, quantity, expires_on, label, created_at, items!inner(shop_id)")
     .eq("items.shop_id", shopId)
     .order("expires_on", { ascending: true });
   if (error) throw error;
   return (data as unknown as BatchRow[]).map(fromBatchRow);
 }
 
-export async function insertBatch(itemId: number, quantity: number, expiresOn: string): Promise<Batch> {
+export async function insertBatch(
+  itemId: number,
+  quantity: number,
+  expiresOn: string,
+  label?: string | null
+): Promise<Batch> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("batches")
-    .insert({ item_id: itemId, quantity, expires_on: expiresOn })
-    .select("id, item_id, quantity, expires_on")
+    .insert({ item_id: itemId, quantity, expires_on: expiresOn, label: label?.trim() || null })
+    .select("id, item_id, quantity, expires_on, label, created_at")
     .single();
   if (error) throw error;
   return fromBatchRow(data as unknown as BatchRow);
@@ -352,10 +366,10 @@ export async function insertBatch(itemId: number, quantity: number, expiresOn: s
 
 export async function updateBatch(
   id: number,
-  patch: { quantity?: number; expiresOn?: string }
+  patch: { quantity?: number; expiresOn?: string; label?: string | null }
 ): Promise<Batch> {
   const supabase = createClient();
-  const dbPatch: Record<string, number | string | boolean> = {};
+  const dbPatch: Record<string, number | string | boolean | null> = {};
   if (patch.quantity !== undefined) dbPatch.quantity = patch.quantity;
   // A corrected date should re-arm the expiration alert rather than stay
   // silenced by whatever the old date already triggered (or didn't).
@@ -363,11 +377,12 @@ export async function updateBatch(
     dbPatch.expires_on = patch.expiresOn;
     dbPatch.expiration_alert_sent = false;
   }
+  if (patch.label !== undefined) dbPatch.label = patch.label?.trim() || null;
   const { data, error } = await supabase
     .from("batches")
     .update(dbPatch)
     .eq("id", id)
-    .select("id, item_id, quantity, expires_on")
+    .select("id, item_id, quantity, expires_on, label, created_at")
     .single();
   if (error) throw error;
   return fromBatchRow(data as unknown as BatchRow);

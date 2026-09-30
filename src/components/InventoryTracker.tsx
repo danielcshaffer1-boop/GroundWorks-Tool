@@ -1489,7 +1489,7 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
                 text to opt out, HELP for help.
                 <span className="flex items-center gap-3 mt-2">
                   <a
-                    href="https://docs.google.com/document/d/1WK9vGoqY49YQFDl4zjIQtq6P8kvLiZ0eHYV5ob_gxTg/edit?usp=sharing"
+                    href="/privacy"
                     target="_blank"
                     rel="noreferrer"
                     className="underline font-semibold"
@@ -1499,7 +1499,7 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
                     Privacy Policy
                   </a>
                   <a
-                    href="https://docs.google.com/document/d/13gFfxhpodBltWpfNRV7bia5ub1qq5VmX-ngS2eV1wCk/edit?usp=sharing"
+                    href="/terms"
                     target="_blank"
                     rel="noreferrer"
                     className="underline font-semibold"

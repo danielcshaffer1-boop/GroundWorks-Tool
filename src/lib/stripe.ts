@@ -26,6 +26,18 @@ export function priceIdForPlan(plan: PlanId): string {
   return priceId;
 }
 
+// One-time builder's fee, charged only on a shop's very first checkout (see
+// the `!stripe_customer_id` gate in /api/stripe/checkout) — never on a
+// renewal or a plan switch, both of which go through the billing portal
+// instead, a separate code path that never touches this.
+export function setupFeePriceId(): string {
+  const priceId = process.env.STRIPE_PRICE_SETUP_FEE;
+  if (!priceId) {
+    throw new Error("Missing STRIPE_PRICE_SETUP_FEE env var.");
+  }
+  return priceId;
+}
+
 // The reverse lookup — given a Stripe Price id from a webhook event, which
 // of our plans does it correspond to? Returns null for an unrecognized
 // price (e.g. one removed from Stripe, or from an unrelated product).

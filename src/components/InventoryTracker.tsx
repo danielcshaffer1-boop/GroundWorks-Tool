@@ -2818,8 +2818,11 @@ function NoPlanScreen({ shopName, onLogout }: NoPlanScreenProps) {
         >
           CHOOSE A PLAN FOR {shopName.toUpperCase()}
         </h1>
-        <p className="text-sm mb-6" style={{ color: "#9C8C79" }}>
+        <p className="text-sm mb-2" style={{ color: "#9C8C79" }}>
           Every shop needs an active plan to get into the dashboard.
+        </p>
+        <p className="text-xs mb-6" style={{ color: "#6E6153" }}>
+          New shops also pay a one-time $200 setup fee, charged once alongside your first month.
         </p>
 
         <div className="flex flex-col gap-3 mb-4">

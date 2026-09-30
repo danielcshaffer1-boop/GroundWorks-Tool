@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getStripe, priceIdForPlan, type PlanId } from "@/lib/stripe";
+import { getStripe, priceIdForPlan, setupFeePriceId, type PlanId } from "@/lib/stripe";
 import { DEMO_SHOP_ID } from "@/lib/demo";
 
 export async function POST(request: NextRequest) {
@@ -50,10 +50,21 @@ export async function POST(request: NextRequest) {
 
   const origin = request.nextUrl.origin;
 
+  // A shop that has never completed checkout before (no Stripe customer
+  // yet) owes the one-time builder's/setup fee alongside the recurring
+  // plan. Stripe bills a one-time price added to a subscription-mode
+  // session as a line item on the first invoice only — it never becomes
+  // part of the subscription itself, so the webhook's plan-tier lookup
+  // (which reads subscription.items, not the invoice) is unaffected.
+  const isFirstCheckout = !shop.stripe_customer_id;
+
   try {
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
-      line_items: [{ price: priceIdForPlan(plan as PlanId), quantity: 1 }],
+      line_items: [
+        { price: priceIdForPlan(plan as PlanId), quantity: 1 },
+        ...(isFirstCheckout ? [{ price: setupFeePriceId(), quantity: 1 }] : []),
+      ],
       client_reference_id: shop.id,
       customer: shop.stripe_customer_id ?? undefined,
       customer_email: shop.stripe_customer_id ? undefined : (user.email ?? undefined),

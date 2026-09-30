@@ -1558,7 +1558,7 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
 
 // ---- Login / shop select ---------------------------------------------------------
 
-type AuthMode = "sign-in" | "sign-up";
+type AuthMode = "sign-in" | "sign-up" | "forgot-password";
 
 function LoginScreen() {
   const [authMode, setAuthMode] = useState<AuthMode>("sign-in");
@@ -1573,6 +1573,33 @@ function LoginScreen() {
     e.preventDefault();
     setError("");
     setNotice("");
+
+    if (authMode === "forgot-password") {
+      if (!email.trim()) {
+        setError("Enter your email.");
+        return;
+      }
+      setBusy(true);
+      const supabase = createClient();
+      try {
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+        // Deliberately generic either way, so this can't be used to probe
+        // which emails have an account (Supabase itself behaves the same
+        // way — resetPasswordForEmail doesn't error for an unknown email).
+        if (resetError) {
+          setError(resetError.message);
+        } else {
+          setNotice("If an account exists for that email, a password reset link is on its way.");
+        }
+      } catch {
+        setError("Couldn't reach the server. Check your connection and try again.");
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
 
     if (authMode === "sign-up" && !shopName.trim()) {
       setError("Enter a shop name.");
@@ -1674,12 +1701,14 @@ function LoginScreen() {
           }}
           className="mb-1"
         >
-          {authMode === "sign-in" ? "SHOP LOGIN" : "CREATE YOUR SHOP"}
+          {authMode === "sign-in" ? "SHOP LOGIN" : authMode === "sign-up" ? "CREATE YOUR SHOP" : "RESET PASSWORD"}
         </h1>
         <p className="text-xs mb-5" style={{ color: "#9C8C79" }}>
           {authMode === "sign-in"
             ? "Sign in with your shop's email and password."
-            : "Set up a new shop account with an email and password."}
+            : authMode === "sign-up"
+              ? "Set up a new shop account with an email and password."
+              : "Enter your email and we'll send you a link to reset your password."}
         </p>
 
         {authMode === "sign-up" && (
@@ -1710,18 +1739,37 @@ function LoginScreen() {
           style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
         />
 
-        <label className="block text-xs font-mono mb-1.5" style={{ color: "#9C8C79" }}>
-          Password
-        </label>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="••••••••"
-          autoComplete={authMode === "sign-up" ? "new-password" : "current-password"}
-          className="w-full rounded-md border px-3 py-2 mb-2 bg-transparent focus:outline-none"
-          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
-        />
+        {authMode !== "forgot-password" && (
+          <>
+            <label className="block text-xs font-mono mb-1.5" style={{ color: "#9C8C79" }}>
+              Password
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete={authMode === "sign-up" ? "new-password" : "current-password"}
+              className="w-full rounded-md border px-3 py-2 mb-2 bg-transparent focus:outline-none"
+              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+            />
+          </>
+        )}
+
+        {authMode === "sign-in" && (
+          <button
+            type="button"
+            onClick={() => {
+              setAuthMode("forgot-password");
+              setError("");
+              setNotice("");
+            }}
+            className="text-xs font-mono underline underline-offset-2"
+            style={{ color: "#9C8C79" }}
+          >
+            Forgot password?
+          </button>
+        )}
 
         {error && (
           <div className="text-xs font-mono mt-2" style={{ color: "#B0492F" }}>
@@ -1740,39 +1788,53 @@ function LoginScreen() {
           className="w-full mt-5 px-4 py-2.5 rounded-md text-sm font-mono font-semibold disabled:opacity-60"
           style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
         >
-          {busy ? "Working…" : authMode === "sign-in" ? "Sign In" : "Create Shop Account"}
+          {busy
+            ? "Working…"
+            : authMode === "sign-in"
+              ? "Sign In"
+              : authMode === "sign-up"
+                ? "Create Shop Account"
+                : "Send Reset Link"}
         </button>
 
         <button
           type="button"
           onClick={() => {
-            setAuthMode((m) => (m === "sign-in" ? "sign-up" : "sign-in"));
+            setAuthMode((m) => (m === "sign-up" ? "sign-in" : m === "sign-in" ? "sign-up" : "sign-in"));
             setError("");
             setNotice("");
           }}
           className="w-full mt-3 text-xs font-mono underline underline-offset-2"
           style={{ color: "#9C8C79" }}
         >
-          {authMode === "sign-in" ? "New shop? Create an account" : "Already have an account? Sign in"}
+          {authMode === "sign-in"
+            ? "New shop? Create an account"
+            : authMode === "sign-up"
+              ? "Already have an account? Sign in"
+              : "Back to sign in"}
         </button>
 
-        <div className="my-4 flex items-center gap-3">
-          <div className="h-px flex-1" style={{ backgroundColor: "#3A2F27" }} />
-          <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "#6E6153" }}>
-            or
-          </span>
-          <div className="h-px flex-1" style={{ backgroundColor: "#3A2F27" }} />
-        </div>
+        {authMode !== "forgot-password" && (
+          <>
+            <div className="my-4 flex items-center gap-3">
+              <div className="h-px flex-1" style={{ backgroundColor: "#3A2F27" }} />
+              <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "#6E6153" }}>
+                or
+              </span>
+              <div className="h-px flex-1" style={{ backgroundColor: "#3A2F27" }} />
+            </div>
 
-        <button
-          type="button"
-          onClick={handleTryDemo}
-          disabled={busy}
-          className="w-full px-4 py-2.5 rounded-md text-sm font-mono font-semibold border disabled:opacity-60"
-          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
-        >
-          {busy ? "Working…" : "Try the demo — no signup needed"}
-        </button>
+            <button
+              type="button"
+              onClick={handleTryDemo}
+              disabled={busy}
+              className="w-full px-4 py-2.5 rounded-md text-sm font-mono font-semibold border disabled:opacity-60"
+              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+            >
+              {busy ? "Working…" : "Try the demo — no signup needed"}
+            </button>
+          </>
+        )}
       </form>
     </div>
   );

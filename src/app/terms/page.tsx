@@ -7,30 +7,30 @@ export const metadata: Metadata = {
 };
 
 const body = "text-sm leading-relaxed mb-2";
-const bodyStyle = { color: "#EDE3D3" };
+const bodyStyle = { color: "var(--gw-text)" };
 
 export default function TermsOfServicePage() {
   return (
-    <main className="min-h-screen px-6 py-10 sm:py-16" style={{ backgroundColor: "#1B1512" }}>
+    <main className="min-h-screen px-6 py-10 sm:py-16" style={{ backgroundColor: "var(--gw-bg)" }}>
       <div className="max-w-2xl mx-auto">
         <Link
           href="/"
           className="font-mono text-xs uppercase tracking-widest"
-          style={{ color: "#9C8C79" }}
+          style={{ color: "var(--gw-text-2)" }}
         >
           &larr; GroundWorks Inventory
         </Link>
 
         <h1
           className="mt-4 mb-1"
-          style={{ fontFamily: "'Barlow Condensed', sans-serif", color: "#EDE3D3", fontSize: 32, fontWeight: 700 }}
+          style={{ fontFamily: "var(--font-display)", color: "var(--gw-text)", fontSize: 32, fontWeight: 700 }}
         >
           Terms of Service
         </h1>
-        <p className="font-mono text-xs uppercase tracking-widest mb-1" style={{ color: "#6E6153" }}>
+        <p className="font-mono text-xs uppercase tracking-widest mb-1" style={{ color: "var(--gw-text-3)" }}>
           Restock alert text messages
         </p>
-        <p className="font-mono text-[10px] uppercase tracking-widest mb-6" style={{ color: "#6E6153" }}>
+        <p className="font-mono text-[10px] uppercase tracking-widest mb-6" style={{ color: "var(--gw-text-3)" }}>
           Effective 8/29/2026
         </p>
 
@@ -56,7 +56,7 @@ export default function TermsOfServicePage() {
           <li>
             <span className="font-semibold">Opt-Out</span> — Reply STOP at any time to cancel. Reply HELP for
             assistance, or contact{" "}
-            <a href="mailto:danielcshaffer1@gmail.com" className="underline" style={{ color: "#EDE3D3" }}>
+            <a href="mailto:danielcshaffer1@gmail.com" className="underline" style={{ color: "var(--gw-text)" }}>
               danielcshaffer1@gmail.com
             </a>
             .
@@ -75,7 +75,7 @@ export default function TermsOfServicePage() {
           </li>
           <li>
             <span className="font-semibold">Privacy</span> — Use of your information is governed by our{" "}
-            <Link href="/privacy" className="underline" style={{ color: "#EDE3D3" }}>
+            <Link href="/privacy" className="underline" style={{ color: "var(--gw-text)" }}>
               Privacy Policy
             </Link>
             .
@@ -84,7 +84,7 @@ export default function TermsOfServicePage() {
 
         <p className="text-sm leading-relaxed mt-8 mb-10" style={bodyStyle}>
           Questions? Contact GroundWorks Inventory at{" "}
-          <a href="mailto:danielcshaffer1@gmail.com" className="underline" style={{ color: "#EDE3D3" }}>
+          <a href="mailto:danielcshaffer1@gmail.com" className="underline" style={{ color: "var(--gw-text)" }}>
             danielcshaffer1@gmail.com
           </a>
           .

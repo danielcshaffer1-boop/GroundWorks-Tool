@@ -7,29 +7,29 @@ export const metadata: Metadata = {
 };
 
 const sectionHeading = "font-mono text-xs uppercase tracking-widest mt-8 mb-2";
-const sectionHeadingStyle = { color: "#C1663B" };
+const sectionHeadingStyle = { color: "var(--gw-accent-text)" };
 const body = "text-sm leading-relaxed mb-2";
-const bodyStyle = { color: "#EDE3D3" };
+const bodyStyle = { color: "var(--gw-text)" };
 
 export default function PrivacyPolicyPage() {
   return (
-    <main className="min-h-screen px-6 py-10 sm:py-16" style={{ backgroundColor: "#1B1512" }}>
+    <main className="min-h-screen px-6 py-10 sm:py-16" style={{ backgroundColor: "var(--gw-bg)" }}>
       <div className="max-w-2xl mx-auto">
         <Link
           href="/"
           className="font-mono text-xs uppercase tracking-widest"
-          style={{ color: "#9C8C79" }}
+          style={{ color: "var(--gw-text-2)" }}
         >
           &larr; GroundWorks Inventory
         </Link>
 
         <h1
           className="mt-4 mb-1"
-          style={{ fontFamily: "'Barlow Condensed', sans-serif", color: "#EDE3D3", fontSize: 32, fontWeight: 700 }}
+          style={{ fontFamily: "var(--font-display)", color: "var(--gw-text)", fontSize: 32, fontWeight: 700 }}
         >
           Privacy Policy
         </h1>
-        <p className="font-mono text-xs uppercase tracking-widest mb-6" style={{ color: "#6E6153" }}>
+        <p className="font-mono text-xs uppercase tracking-widest mb-6" style={{ color: "var(--gw-text-3)" }}>
           SMS restock alert service
         </p>
 
@@ -95,7 +95,7 @@ export default function PrivacyPolicyPage() {
         <p className={body} style={bodyStyle}>
           After opting out, you will receive one final confirmation message and no further alerts unless you opt in
           again. Reply HELP to any message for assistance, or contact us at{" "}
-          <a href="mailto:danielcshaffer1@gmail.com" className="underline" style={{ color: "#EDE3D3" }}>
+          <a href="mailto:danielcshaffer1@gmail.com" className="underline" style={{ color: "var(--gw-text)" }}>
             danielcshaffer1@gmail.com
           </a>
           .
@@ -131,7 +131,7 @@ export default function PrivacyPolicyPage() {
         </ul>
         <p className={body} style={bodyStyle}>
           To exercise these rights, contact us at{" "}
-          <a href="mailto:danielcshaffer1@gmail.com" className="underline" style={{ color: "#EDE3D3" }}>
+          <a href="mailto:danielcshaffer1@gmail.com" className="underline" style={{ color: "var(--gw-text)" }}>
             danielcshaffer1@gmail.com
           </a>
           .

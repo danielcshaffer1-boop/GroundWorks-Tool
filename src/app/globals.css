@@ -1,17 +1,132 @@
 @import "tailwindcss";
 
+/* ---- Design tokens ---------------------------------------------------------
+   Every color in the app lives here. Text tokens are chosen so each clears
+   WCAG AA (4.5:1) on every surface it can sit on (bg, surface, raised,
+   selected) — verified with a contrast calculation, not by eye. The *-text
+   variants of accent/danger exist because the brand fills (#C1663B,
+   #B0492F) are too dark to read as small text on the dark surfaces. */
 :root {
-  --background: #1b1512;
-  --foreground: #ede3d3;
+  --gw-bg: #1b1512;
+  --gw-surface: #211a15;
+  --gw-surface-raised: #241c17;
+  --gw-surface-sunk: #1f1712;
+  --gw-surface-selected: #2a211c;
+
+  --gw-border: #3a2f27;
+  --gw-border-faint: #2a2119;
+  --gw-border-strong: #5a4a3c;
+
+  --gw-text: #ede3d3;
+  --gw-text-2: #b3a390;
+  --gw-text-3: #9c8c79;
+
+  --gw-accent: #c1663b;
+  --gw-accent-text: #d07848;
+  --gw-danger: #b0492f;
+  --gw-danger-text: #d6705a;
+  --gw-ok: #85996d;
+  --gw-warn: #c79a3e;
+
+  --font-display: var(--font-barlow), "Barlow Condensed", sans-serif;
+  --font-sans: var(--font-inter), Arial, Helvetica, sans-serif;
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+
+  --background: var(--gw-bg);
+  --foreground: var(--gw-text);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  /* Tailwind's font-mono utility (used for labels and numbers across the
+     app) resolves to the self-hosted Plex Mono instead of whatever monospace
+     the visitor's OS happens to ship. */
+  --font-mono: var(--font-plex-mono), ui-monospace, Menlo, Consolas, monospace;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  /* No pull-to-refresh / rubber-band: a swipe-down mid Closing Count would
+     otherwise reload the page and throw away every unsaved count. */
+  overscroll-behavior-y: none;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: "Inter", Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+}
+
+/* ---- Touch + press behavior --------------------------------------------- */
+
+button,
+a,
+[role="button"],
+summary {
+  touch-action: manipulation;
+}
+
+/* Controls are not selectable text; a long press on one shouldn't highlight
+   its label or open the callout. Content (item names, counts) stays
+   selectable. */
+button,
+[role="button"] {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Press feedback arrives on pointer-down, not release, so a tap reads as
+   instant. Unlayered on purpose: it must win over Tailwind's
+   transition-colors utility, so color transitions are restated here.
+   aria-expanded excludes the full-width category headers, which shouldn't
+   shrink. */
+button {
+  transition:
+    transform 120ms var(--ease-out),
+    color 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease,
+    opacity 150ms ease;
+}
+
+button:not(:disabled):not([aria-expanded]):active,
+[role="button"]:active {
+  transform: scale(0.97);
+}
+
+/* Visible keyboard / input focus. Tailwind's focus:outline-none is used on
+   most inputs; this restores an accessible indicator without a new class on
+   every field. */
+:focus-visible {
+  outline: 2px solid var(--gw-accent-text);
+  outline-offset: 2px;
+}
+
+/* A 32px visual control with a 44px touch target. */
+.tap-44 {
+  position: relative;
+}
+.tap-44::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+  transform: translate(-50%, -50%);
+}
+
+/* iOS Safari zooms the whole page when a focused input is under 16px and
+   never zooms back out. The closing-count field is already larger (text-lg),
+   so it is excluded rather than shrunk. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not(.text-lg),
+  textarea,
+  select {
+    font-size: 16px;
+  }
 }

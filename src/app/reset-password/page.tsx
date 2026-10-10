@@ -71,19 +71,19 @@ export default function ResetPasswordPage() {
   return (
     <div
       className="min-h-screen w-full flex items-center justify-center px-5"
-      style={{ backgroundColor: "#1B1512", fontFamily: "'Inter', sans-serif" }}
+      style={{ backgroundColor: "var(--gw-bg)", fontFamily: "var(--font-sans)" }}
     >
       <div
         className="w-full max-w-sm rounded-lg border p-6"
-        style={{ borderColor: "#3A2F27", backgroundColor: "#211A15" }}
+        style={{ borderColor: "var(--gw-border)", backgroundColor: "var(--gw-surface)" }}
       >
-        <div className="font-mono text-xs uppercase tracking-[0.25em] mb-2" style={{ color: "#C1663B" }}>
+        <div className="font-mono text-xs uppercase tracking-[0.25em] mb-2" style={{ color: "var(--gw-accent-text)" }}>
           GroundWorks
         </div>
         <h1
           style={{
-            fontFamily: "'Barlow Condensed', sans-serif",
-            color: "#EDE3D3",
+            fontFamily: "var(--font-display)",
+            color: "var(--gw-text)",
             fontSize: 28,
             fontWeight: 700,
             letterSpacing: "0.01em",
@@ -94,20 +94,20 @@ export default function ResetPasswordPage() {
         </h1>
 
         {status === "checking" && (
-          <p className="text-xs mt-4" style={{ color: "#9C8C79" }}>
+          <p className="text-xs mt-4" style={{ color: "var(--gw-text-2)" }}>
             Verifying your reset link…
           </p>
         )}
 
         {status === "invalid" && (
           <>
-            <p className="text-xs mt-4 mb-4" style={{ color: "#9C8C79" }}>
+            <p className="text-xs mt-4 mb-4" style={{ color: "var(--gw-text-2)" }}>
               This reset link is invalid or has expired. Request a new one from the sign-in screen.
             </p>
             <Link
               href="/"
               className="block w-full text-center px-4 py-2.5 rounded-md text-sm font-mono font-semibold"
-              style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
+              style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
             >
               Back to sign in
             </Link>
@@ -115,18 +115,18 @@ export default function ResetPasswordPage() {
         )}
 
         {status === "updated" && (
-          <p className="text-xs mt-4" style={{ color: "#7A8F5E" }}>
+          <p className="text-xs mt-4" style={{ color: "var(--gw-ok)" }}>
             Password updated. Taking you to your dashboard…
           </p>
         )}
 
         {status === "ready" && (
           <form onSubmit={handleSubmit}>
-            <p className="text-xs mb-5 mt-1" style={{ color: "#9C8C79" }}>
+            <p className="text-xs mb-5 mt-1" style={{ color: "var(--gw-text-2)" }}>
               Choose a new password for your account.
             </p>
 
-            <label className="block text-xs font-mono mb-1.5" style={{ color: "#9C8C79" }}>
+            <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--gw-text-2)" }}>
               New password
             </label>
             <input
@@ -136,10 +136,10 @@ export default function ResetPasswordPage() {
               placeholder="••••••••"
               autoComplete="new-password"
               className="w-full rounded-md border px-3 py-2 mb-4 bg-transparent focus:outline-none"
-              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+              style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
             />
 
-            <label className="block text-xs font-mono mb-1.5" style={{ color: "#9C8C79" }}>
+            <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--gw-text-2)" }}>
               Confirm new password
             </label>
             <input
@@ -149,11 +149,11 @@ export default function ResetPasswordPage() {
               placeholder="••••••••"
               autoComplete="new-password"
               className="w-full rounded-md border px-3 py-2 mb-2 bg-transparent focus:outline-none"
-              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+              style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
             />
 
             {error && (
-              <div className="text-xs font-mono mt-2" style={{ color: "#B0492F" }}>
+              <div className="text-xs font-mono mt-2" style={{ color: "var(--gw-danger-text)" }}>
                 {error}
               </div>
             )}
@@ -162,7 +162,7 @@ export default function ResetPasswordPage() {
               type="submit"
               disabled={busy}
               className="w-full mt-5 px-4 py-2.5 rounded-md text-sm font-mono font-semibold disabled:opacity-60"
-              style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
+              style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
             >
               {busy ? "Working…" : "Update Password"}
             </button>

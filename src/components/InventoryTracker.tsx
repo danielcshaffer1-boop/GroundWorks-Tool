@@ -91,9 +91,9 @@ function getStatus(item: Pick<InventoryItem, "count" | "threshold">): Status {
 }
 
 const STATUS_META: Record<Status, { label: string; stamp: string; color: string }> = {
-  good: { label: "Stocked", stamp: "STOCKED", color: "#7A8F5E" },
-  low: { label: "Reorder Soon", stamp: "REORDER", color: "#C79A3E" },
-  critical: { label: "Critical", stamp: "CRITICAL", color: "#B0492F" },
+  good: { label: "Stocked", stamp: "STOCKED", color: "var(--gw-ok)" },
+  low: { label: "Reorder Soon", stamp: "REORDER", color: "var(--gw-warn)" },
+  critical: { label: "Critical", stamp: "CRITICAL", color: "var(--gw-danger-text)" },
 };
 
 // ---- Display mode (Count vs. Amount) ---------------------------------------
@@ -211,23 +211,23 @@ function ItemRow({
       // predict how much width a row actually has. Stacking always is
       // simpler and correct at every size instead of guessing.
       className="flex flex-col gap-3 py-4 border-b"
-      style={{ borderColor: "#3A2F27" }}
+      style={{ borderColor: "var(--gw-border)" }}
     >
       <div className="flex items-center gap-3 min-w-0">
         <StatusStamp status={status} />
 
         <div className="flex-1 min-w-0">
-          <div className="font-semibold" style={{ color: "#EDE3D3", fontFamily: "'Barlow Condensed', sans-serif", fontSize: 19, letterSpacing: "0.01em" }}>
+          <div className="font-semibold" style={{ color: "var(--gw-text)", fontFamily: "var(--font-display)", fontSize: 19, letterSpacing: "0.01em" }}>
             {item.name.toUpperCase()}
           </div>
-          <div className="font-mono text-xs mt-0.5" style={{ color: "#9C8C79" }}>
+          <div className="font-mono text-xs mt-0.5" style={{ color: "var(--gw-text-2)" }}>
             threshold {displayThreshold(item, displayMode)} · {meta.label.toLowerCase()}
             {item.unitSize ? ` · 1 ${item.unit.replace(/s$/, "")} = ${item.unitSize} ${item.unitMeasure}` : ""}
           </div>
           {nearestBatch && (
             <div
-              className="font-mono text-[10px] mt-0.5 flex items-center gap-1"
-              style={{ color: daysUntilDate(nearestBatch.expiresOn) <= 3 ? "#C79A3E" : "#6E6153" }}
+              className="font-mono text-[11px] mt-0.5 flex items-center gap-1"
+              style={{ color: daysUntilDate(nearestBatch.expiresOn) <= 3 ? "var(--gw-warn)" : "var(--gw-text-3)" }}
             >
               <CalendarClock size={10} />
               {batches.length === 1 ? "1 batch" : `${batches.length} batches`} ·{" "}
@@ -237,25 +237,25 @@ function ItemRow({
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         {mode === "quick" ? (
           <div className="flex items-center gap-2">
             <button
               onClick={() => onAdjust(item.id, -1)}
-              className="w-9 h-9 rounded-full flex items-center justify-center border transition-colors hover:brightness-125 shrink-0"
-              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+              className="w-11 h-11 rounded-full flex items-center justify-center border transition-colors hover:brightness-125 shrink-0"
+              style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
               aria-label={`Decrease ${item.name}`}
             >
               <Minus size={16} />
             </button>
-            <div className="font-mono text-center" style={{ color: "#EDE3D3", minWidth: 48 }}>
+            <div className="font-mono text-center" style={{ color: "var(--gw-text)", minWidth: 48 }}>
               <div className="text-lg leading-tight">{qty.amount}</div>
-              <div className="text-[9px] uppercase tracking-wide" style={{ color: "#6E6153" }}>{qty.label}</div>
+              <div className="text-[11px] uppercase tracking-wide" style={{ color: "var(--gw-text-3)" }}>{qty.label}</div>
             </div>
             <button
               onClick={() => onAdjust(item.id, 1)}
-              className="w-9 h-9 rounded-full flex items-center justify-center border transition-colors hover:brightness-125 shrink-0"
-              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+              className="w-11 h-11 rounded-full flex items-center justify-center border transition-colors hover:brightness-125 shrink-0"
+              style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
               aria-label={`Increase ${item.name}`}
             >
               <Plus size={16} />
@@ -292,9 +292,9 @@ function ItemRow({
                 onBatchChange(item.id, Math.max(0, showingMeasurement ? parsed / item.unitSize! : parsed));
               }}
               className="w-20 font-mono text-lg text-center rounded-md border py-1.5 bg-transparent focus:outline-none focus:ring-2"
-              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+              style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
             />
-            <span className="text-[9px] uppercase tracking-wide" style={{ color: "#6E6153" }}>
+            <span className="text-[11px] uppercase tracking-wide" style={{ color: "var(--gw-text-3)" }}>
               {showingMeasurement ? item.unitMeasure : item.unit}
             </span>
           </div>
@@ -303,8 +303,8 @@ function ItemRow({
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => onAddStock(item.id)}
-            className="w-8 h-8 rounded-full flex items-center justify-center border shrink-0 hover:brightness-125"
-            style={{ borderColor: "#5A4A3C", color: "#9C8C79" }}
+            className="w-8 h-8 tap-44 rounded-full flex items-center justify-center border shrink-0 hover:brightness-125"
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text-2)" }}
             aria-label={`Add stock for ${item.name}`}
             title="Add stock — just picked some up?"
           >
@@ -314,8 +314,8 @@ function ItemRow({
           {isPerishable && (
             <button
               onClick={() => onEditBatches(item.id)}
-              className="w-8 h-8 rounded-full flex items-center justify-center border shrink-0 hover:brightness-125"
-              style={{ borderColor: "#5A4A3C", color: "#9C8C79" }}
+              className="w-8 h-8 tap-44 rounded-full flex items-center justify-center border shrink-0 hover:brightness-125"
+              style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text-2)" }}
               aria-label={`Manage batches for ${item.name}`}
               title="Batches — track expiration, FIFO"
             >
@@ -325,8 +325,8 @@ function ItemRow({
 
           <button
             onClick={() => onEdit(item.id)}
-            className="w-8 h-8 rounded-full flex items-center justify-center border shrink-0 hover:brightness-125"
-            style={{ borderColor: "#5A4A3C", color: "#9C8C79" }}
+            className="w-8 h-8 tap-44 rounded-full flex items-center justify-center border shrink-0 hover:brightness-125"
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text-2)" }}
             aria-label={`Edit ${item.name}`}
           >
             <PencilLine size={14} />
@@ -354,8 +354,8 @@ function AddItemForm({ onAdd, onCancel }: AddItemFormProps) {
   const [unitMeasure, setUnitMeasure] = useState("");
 
   return (
-    <div className="rounded-lg border p-5 mb-6" style={{ borderColor: "#5A4A3C", backgroundColor: "#241C17" }}>
-      <div className="font-mono text-xs uppercase tracking-widest mb-4" style={{ color: "#C1663B" }}>
+    <div className="rounded-lg border p-5 mb-6" style={{ borderColor: "var(--gw-border-strong)", backgroundColor: "var(--gw-surface-raised)" }}>
+      <div className="font-mono text-xs uppercase tracking-widest mb-4" style={{ color: "var(--gw-accent-text)" }}>
         New Stock Item
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
@@ -364,20 +364,20 @@ function AddItemForm({ onAdd, onCancel }: AddItemFormProps) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           className="col-span-2 rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+          style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
         />
         <input
           placeholder="Stocking unit (e.g. carton, bag)"
           value={unit}
           onChange={(e) => setUnit(e.target.value)}
           className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+          style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
         />
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value as CategoryId)}
           className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+          style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
         >
           {CATEGORIES.map((c) => (
             <option key={c.id} value={c.id} style={{ color: "#000" }}>
@@ -385,7 +385,7 @@ function AddItemForm({ onAdd, onCancel }: AddItemFormProps) {
             </option>
           ))}
         </select>
-        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
+        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
           Starting count
           <input
             type="number"
@@ -396,20 +396,20 @@ function AddItemForm({ onAdd, onCancel }: AddItemFormProps) {
             // gives "05"). Resolved back to 0 only at submit time.
             onChange={(e) => setCount(e.target.value === "" ? "" : parseInt(e.target.value, 10))}
             className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-            style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
           />
         </label>
-        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
+        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
           Reorder threshold
           <input
             type="number"
             value={threshold}
             onChange={(e) => setThreshold(e.target.value === "" ? "" : parseInt(e.target.value, 10))}
             className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-            style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
           />
         </label>
-        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
+        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
           Amount per unit
           <input
             type="number"
@@ -418,21 +418,21 @@ function AddItemForm({ onAdd, onCancel }: AddItemFormProps) {
             value={unitSize}
             onChange={(e) => setUnitSize(e.target.value)}
             className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-            style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
           />
         </label>
-        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
+        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
           Measure (oz, pumps, cups…)
           <input
             placeholder="e.g. oz"
             value={unitMeasure}
             onChange={(e) => setUnitMeasure(e.target.value)}
             className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-            style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
           />
         </label>
       </div>
-      <p className="text-[10px] font-mono mb-3" style={{ color: "#6E6153" }}>
+      <p className="text-[11px] font-mono mb-3" style={{ color: "var(--gw-text-3)" }}>
         &quot;Amount per unit&quot; + &quot;Measure&quot; are optional, but required if you want this item usable in a Recipe (Pro).
         E.g. a carton of oat milk might be 32 oz, so 1 carton = 32 oz.
       </p>
@@ -440,7 +440,7 @@ function AddItemForm({ onAdd, onCancel }: AddItemFormProps) {
         <button
           onClick={onCancel}
           className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-1.5 border"
-          style={{ borderColor: "#5A4A3C", color: "#9C8C79" }}
+          style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text-2)" }}
         >
           <X size={14} /> Cancel
         </button>
@@ -458,7 +458,7 @@ function AddItemForm({ onAdd, onCancel }: AddItemFormProps) {
             });
           }}
           className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-1.5 font-semibold"
-          style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
+          style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
         >
           <Check size={14} /> Add Item
         </button>
@@ -486,8 +486,8 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
   const [unitMeasure, setUnitMeasure] = useState(item.unitMeasure ?? "");
 
   return (
-    <div className="rounded-lg border p-5 mb-6" style={{ borderColor: "#5A4A3C", backgroundColor: "#241C17" }}>
-      <div className="font-mono text-xs uppercase tracking-widest mb-4" style={{ color: "#C1663B" }}>
+    <div className="rounded-lg border p-5 mb-6" style={{ borderColor: "var(--gw-border-strong)", backgroundColor: "var(--gw-surface-raised)" }}>
+      <div className="font-mono text-xs uppercase tracking-widest mb-4" style={{ color: "var(--gw-accent-text)" }}>
         Edit {item.name}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
@@ -496,20 +496,20 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           className="col-span-2 rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+          style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
         />
         <input
           placeholder="Stocking unit (e.g. carton, bag)"
           value={unit}
           onChange={(e) => setUnit(e.target.value)}
           className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+          style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
         />
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value as CategoryId)}
           className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+          style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
         >
           {CATEGORIES.map((c) => (
             <option key={c.id} value={c.id} style={{ color: "#000" }}>
@@ -517,7 +517,7 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
             </option>
           ))}
         </select>
-        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
+        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
           Count
           <input
             type="number"
@@ -527,20 +527,20 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
             // never destructively defaulting a real item's stock to zero.
             onChange={(e) => setCount(e.target.value === "" ? "" : parseInt(e.target.value, 10))}
             className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-            style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
           />
         </label>
-        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
+        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
           Reorder threshold
           <input
             type="number"
             value={threshold}
             onChange={(e) => setThreshold(e.target.value === "" ? "" : parseInt(e.target.value, 10))}
             className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-            style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
           />
         </label>
-        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
+        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
           Amount per unit
           <input
             type="number"
@@ -549,17 +549,17 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
             value={unitSize}
             onChange={(e) => setUnitSize(e.target.value)}
             className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-            style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
           />
         </label>
-        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
+        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
           Measure (oz, pumps, cups…)
           <input
             placeholder="e.g. oz"
             value={unitMeasure}
             onChange={(e) => setUnitMeasure(e.target.value)}
             className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-            style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
           />
         </label>
       </div>
@@ -567,7 +567,7 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
         <button
           onClick={() => onDelete(item.id)}
           className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-1.5 border"
-          style={{ borderColor: "#5A4A3C", color: "#B0492F" }}
+          style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-danger-text)" }}
         >
           <Trash2 size={14} /> Delete
         </button>
@@ -575,7 +575,7 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
           <button
             onClick={onCancel}
             className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-1.5 border"
-            style={{ borderColor: "#5A4A3C", color: "#9C8C79" }}
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text-2)" }}
           >
             <X size={14} /> Cancel
           </button>
@@ -593,7 +593,7 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
               });
             }}
             className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-1.5 font-semibold"
-            style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
+            style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
           >
             <Check size={14} /> Save Changes
           </button>
@@ -639,22 +639,22 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
   const canSubmit = nativeAdd > 0 && (!asBatch || !!expiresOn);
 
   return (
-    <div className="rounded-lg border p-5 mb-6" style={{ borderColor: "#5A4A3C", backgroundColor: "#241C17" }}>
-      <div className="font-mono text-xs uppercase tracking-widest mb-1" style={{ color: "#C1663B" }}>
+    <div className="rounded-lg border p-5 mb-6" style={{ borderColor: "var(--gw-border-strong)", backgroundColor: "var(--gw-surface-raised)" }}>
+      <div className="font-mono text-xs uppercase tracking-widest mb-1" style={{ color: "var(--gw-accent-text)" }}>
         Add Stock — {item.name}
       </div>
-      <p className="text-xs mb-4" style={{ color: "#9C8C79" }}>
+      <p className="text-xs mb-4" style={{ color: "var(--gw-text-2)" }}>
         Just picked some up? Say how many you&apos;re adding and it&apos;ll do the math for you.
       </p>
 
       {isPerishable && (
-        <div className="flex items-center gap-1 p-1 rounded-lg border overflow-x-auto max-w-full mb-3" style={{ borderColor: "#3A2F27" }}>
+        <div className="flex items-center gap-1 p-1 rounded-lg border overflow-x-auto max-w-full mb-3" style={{ borderColor: "var(--gw-border)" }}>
           <button
             onClick={() => setAsBatch(false)}
             className="px-3 py-1.5 rounded-md text-xs font-mono transition-colors"
             style={{
-              backgroundColor: !asBatch ? "#2A211C" : "transparent",
-              color: !asBatch ? "#EDE3D3" : "#6E6153",
+              backgroundColor: !asBatch ? "var(--gw-surface-selected)" : "transparent",
+              color: !asBatch ? "var(--gw-text)" : "var(--gw-text-3)",
             }}
           >
             Individual units
@@ -663,8 +663,8 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
             onClick={() => setAsBatch(true)}
             className="px-3 py-1.5 rounded-md text-xs font-mono transition-colors flex items-center gap-1.5"
             style={{
-              backgroundColor: asBatch ? "#2A211C" : "transparent",
-              color: asBatch ? "#EDE3D3" : "#6E6153",
+              backgroundColor: asBatch ? "var(--gw-surface-selected)" : "transparent",
+              color: asBatch ? "var(--gw-text)" : "var(--gw-text-3)",
             }}
           >
             <CalendarClock size={12} /> New batch
@@ -673,7 +673,7 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
+        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
           Adding how many {item.unit}?
           <input
             type="number"
@@ -683,11 +683,11 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
             value={qty}
             onChange={(e) => setQty(e.target.value === "" ? "" : parseFloat(e.target.value))}
             className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-            style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
           />
         </label>
         {hasSize && (
-          <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
+          <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
             Size of each ({item.unitMeasure})
             <input
               type="number"
@@ -696,24 +696,24 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
               value={size}
               onChange={(e) => setSize(e.target.value)}
               className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+              style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
             />
           </label>
         )}
         {asBatch && (
-          <label className="flex flex-col gap-1 text-xs font-mono col-span-2" style={{ color: "#9C8C79" }}>
+          <label className="flex flex-col gap-1 text-xs font-mono col-span-2" style={{ color: "var(--gw-text-2)" }}>
             This batch expires on
             <input
               type="date"
               value={expiresOn}
               onChange={(e) => setExpiresOn(e.target.value)}
               className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+              style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
             />
           </label>
         )}
         {asBatch && (
-          <label className="flex flex-col gap-1 text-xs font-mono col-span-2" style={{ color: "#9C8C79" }}>
+          <label className="flex flex-col gap-1 text-xs font-mono col-span-2" style={{ color: "var(--gw-text-2)" }}>
             Label (optional)
             <input
               type="text"
@@ -722,18 +722,18 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+              style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
             />
           </label>
         )}
       </div>
       {sizeDiffers && (
-        <p className="text-[11px] font-mono mb-3" style={{ color: "#C79A3E" }}>
+        <p className="text-[11px] font-mono mb-3" style={{ color: "var(--gw-warn)" }}>
           Different size than what you track (1 {item.unit.replace(/s$/, "")} = {item.unitSize} {item.unitMeasure}) —
           converting: adds {trimNumber(nativeAdd)} {item.unit}.
         </p>
       )}
-      <p className="text-xs font-mono mb-4" style={{ color: "#7A8F5E" }}>
+      <p className="text-xs font-mono mb-4" style={{ color: "var(--gw-ok)" }}>
         New total: {trimNumber(item.count + nativeAdd)} {item.unit}
         {asBatch && " · tracked as its own batch, consumed first"}
       </p>
@@ -741,7 +741,7 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
         <button
           onClick={onCancel}
           className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-1.5 border"
-          style={{ borderColor: "#5A4A3C", color: "#9C8C79" }}
+          style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text-2)" }}
         >
           <X size={14} /> Cancel
         </button>
@@ -752,7 +752,7 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
           }
           disabled={!canSubmit}
           className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-1.5 font-semibold disabled:opacity-40"
-          style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
+          style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
         >
           <PackagePlus size={14} /> Add {trimNumber(qtyNum)} {item.unit}
         </button>
@@ -797,7 +797,7 @@ function BatchEditorRow({ batch, unit, isNext, onSave, onDelete }: BatchEditorRo
   }
 
   return (
-    <div className="rounded-lg border px-3 py-2" style={{ borderColor: isNext ? "#7A8F5E" : "#3A2F27" }}>
+    <div className="rounded-lg border px-3 py-2" style={{ borderColor: isNext ? "var(--gw-ok)" : "var(--gw-border)" }}>
       <div className="flex items-center gap-2 flex-wrap mb-1.5">
         <input
           type="number"
@@ -806,9 +806,9 @@ function BatchEditorRow({ batch, unit, isNext, onSave, onDelete }: BatchEditorRo
           value={quantity}
           onChange={(e) => setQuantity(e.target.value)}
           className="w-20 rounded-md border px-2 py-1.5 text-sm font-mono bg-transparent focus:outline-none"
-          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+          style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
         />
-        <span className="text-xs font-mono" style={{ color: "#6E6153" }}>
+        <span className="text-xs font-mono" style={{ color: "var(--gw-text-3)" }}>
           {unit}
         </span>
         <input
@@ -816,18 +816,18 @@ function BatchEditorRow({ batch, unit, isNext, onSave, onDelete }: BatchEditorRo
           value={expiresOn}
           onChange={(e) => setExpiresOn(e.target.value)}
           className="rounded-md border px-2 py-1.5 text-sm font-mono bg-transparent focus:outline-none"
-          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+          style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
         />
         <span
-          className="text-[10px] font-mono"
-          style={{ color: days < 0 ? "#B0492F" : days <= 3 ? "#C79A3E" : "#6E6153" }}
+          className="text-[11px] font-mono"
+          style={{ color: days < 0 ? "var(--gw-danger-text)" : days <= 3 ? "var(--gw-warn)" : "var(--gw-text-3)" }}
         >
           {formatDaysUntil(days)}
         </span>
         {isNext && (
           <span
-            className="text-[9px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded"
-            style={{ color: "#7A8F5E", border: "1px solid #7A8F5E" }}
+            className="text-[11px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded"
+            style={{ color: "var(--gw-ok)", border: "1px solid var(--gw-ok)" }}
           >
             Used next
           </span>
@@ -837,12 +837,12 @@ function BatchEditorRow({ batch, unit, isNext, onSave, onDelete }: BatchEditorRo
             <button
               onClick={save}
               className="text-xs px-2 py-1 rounded border font-mono"
-              style={{ borderColor: "#7A8F5E", color: "#7A8F5E" }}
+              style={{ borderColor: "var(--gw-ok)", color: "var(--gw-ok)" }}
             >
               Save
             </button>
           )}
-          <button onClick={onDelete} style={{ color: "#6E6153" }} aria-label="Delete batch">
+          <button onClick={onDelete} style={{ color: "var(--gw-text-3)" }} aria-label="Delete batch">
             <Trash2 size={14} />
           </button>
         </div>
@@ -855,9 +855,9 @@ function BatchEditorRow({ batch, unit, isNext, onSave, onDelete }: BatchEditorRo
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           className="flex-1 min-w-0 rounded-md border px-2 py-1.5 text-xs font-mono bg-transparent focus:outline-none"
-          style={{ borderColor: "#3A2F27", color: "#EDE3D3" }}
+          style={{ borderColor: "var(--gw-border)", color: "var(--gw-text)" }}
         />
-        <span className="text-[10px] font-mono shrink-0" style={{ color: "#6E6153" }}>
+        <span className="text-[11px] font-mono shrink-0" style={{ color: "var(--gw-text-3)" }}>
           added {formatShortDate(batch.createdAt)}
         </span>
       </div>
@@ -883,22 +883,22 @@ function BatchEditor({ item, batches, onAddBatch, onEditBatch, onDeleteBatch, on
   const untracked = Math.max(0, item.count - trackedTotal);
 
   return (
-    <div className="rounded-lg border p-5 mb-6" style={{ borderColor: "#5A4A3C", backgroundColor: "#241C17" }}>
+    <div className="rounded-lg border p-5 mb-6" style={{ borderColor: "var(--gw-border-strong)", backgroundColor: "var(--gw-surface-raised)" }}>
       <div className="flex items-center justify-between mb-1">
-        <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "#C1663B" }}>
+        <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--gw-accent-text)" }}>
           Batches — {item.name}
         </div>
-        <button onClick={onClose} style={{ color: "#9C8C79" }} aria-label="Close batch editor">
+        <button onClick={onClose} style={{ color: "var(--gw-text-2)" }} aria-label="Close batch editor">
           <X size={16} />
         </button>
       </div>
-      <p className="text-xs mb-4" style={{ color: "#9C8C79" }}>
+      <p className="text-xs mb-4" style={{ color: "var(--gw-text-2)" }}>
         Oldest-expiring batch is used first automatically as stock gets consumed — Quick Log, Closing Count, and
         recipe sales deductions all draw from it before touching untracked stock.
       </p>
 
       {batches.length === 0 ? (
-        <p className="text-sm mb-4" style={{ color: "#9C8C79" }}>
+        <p className="text-sm mb-4" style={{ color: "var(--gw-text-2)" }}>
           No tracked batches yet — all {trimNumber(item.count)} {item.unit} is untracked stock.
         </p>
       ) : (
@@ -916,17 +916,17 @@ function BatchEditor({ item, batches, onAddBatch, onEditBatch, onDeleteBatch, on
         </div>
       )}
       {batches.length > 0 && untracked > 0 && (
-        <p className="text-[11px] font-mono mb-4" style={{ color: "#6E6153" }}>
+        <p className="text-[11px] font-mono mb-4" style={{ color: "var(--gw-text-3)" }}>
           + {trimNumber(untracked)} {item.unit} untracked (no expiration recorded)
         </p>
       )}
 
-      <div className="border-t pt-4 mt-2" style={{ borderColor: "#3A2F27" }}>
-        <div className="font-mono text-[10px] uppercase tracking-widest mb-2" style={{ color: "#9C8C79" }}>
+      <div className="border-t pt-4 mt-2" style={{ borderColor: "var(--gw-border)" }}>
+        <div className="font-mono text-[11px] uppercase tracking-widest mb-2" style={{ color: "var(--gw-text-2)" }}>
           Add another batch
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
+          <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
             Quantity ({item.unit})
             <input
               type="number"
@@ -935,20 +935,20 @@ function BatchEditor({ item, batches, onAddBatch, onEditBatch, onDeleteBatch, on
               value={newQty}
               onChange={(e) => setNewQty(e.target.value === "" ? "" : parseFloat(e.target.value))}
               className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+              style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "#9C8C79" }}>
+          <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
             Expires on
             <input
               type="date"
               value={newExpiresOn}
               onChange={(e) => setNewExpiresOn(e.target.value)}
               className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+              style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs font-mono col-span-1 sm:col-span-2" style={{ color: "#9C8C79" }}>
+          <label className="flex flex-col gap-1 text-xs font-mono col-span-1 sm:col-span-2" style={{ color: "var(--gw-text-2)" }}>
             Label (optional)
             <input
               type="text"
@@ -957,7 +957,7 @@ function BatchEditor({ item, batches, onAddBatch, onEditBatch, onDeleteBatch, on
               value={newLabel}
               onChange={(e) => setNewLabel(e.target.value)}
               className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+              style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
             />
           </label>
         </div>
@@ -965,7 +965,7 @@ function BatchEditor({ item, batches, onAddBatch, onEditBatch, onDeleteBatch, on
             new stock coming in, added on top of the current count (and of
             any untracked stock), never carved out of what's already there. */}
         {newQty !== "" && newQty > 0 && (
-          <p className="text-xs font-mono mt-3" style={{ color: "#7A8F5E" }}>
+          <p className="text-xs font-mono mt-3" style={{ color: "var(--gw-ok)" }}>
             New total: {trimNumber(item.count + newQty)} {item.unit} · tracked as its own batch, consumed first
           </p>
         )}
@@ -979,7 +979,7 @@ function BatchEditor({ item, batches, onAddBatch, onEditBatch, onDeleteBatch, on
             }}
             disabled={newQty === "" || newQty <= 0}
             className="px-4 py-2 rounded-md text-sm font-mono font-semibold flex items-center gap-1.5 disabled:opacity-40"
-            style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
+            style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
           >
             <Plus size={14} /> Add Batch
           </button>
@@ -1037,26 +1037,30 @@ function SpreadsheetView({ items, displayMode, onEdit }: SpreadsheetViewProps) {
     });
   }, [items, sortKey, sortDir]);
 
-  const columns: { key: SortKey; label: string }[] = [
-    { key: "name", label: "Item" },
-    { key: "category", label: "Category" },
-    { key: "count", label: "Count" },
-    { key: "unit", label: "Unit" },
-    { key: "threshold", label: "Threshold" },
-    { key: "status", label: "Status" },
+  // Below sm only Item / Count / Status / Edit are shown. Count was being
+  // pushed off the right edge by Category, Unit and Threshold; the Count
+  // cell already carries its unit, so Unit is the least lossy one to drop.
+  const columns: { key: SortKey; label: string; phone: boolean }[] = [
+    { key: "name", label: "Item", phone: true },
+    { key: "category", label: "Category", phone: false },
+    { key: "count", label: "Count", phone: true },
+    { key: "unit", label: "Unit", phone: false },
+    { key: "threshold", label: "Threshold", phone: false },
+    { key: "status", label: "Status", phone: true },
   ];
+  const phoneHidden = "hidden sm:table-cell";
 
   return (
-    <div className="rounded-lg border overflow-x-auto" style={{ borderColor: "#3A2F27" }}>
-      <table className="w-full border-collapse font-mono text-sm">
+    <div className="rounded-lg border overflow-x-auto" style={{ borderColor: "var(--gw-border)" }}>
+      <table className="w-full border-collapse font-mono text-[13px] sm:text-sm">
         <thead>
-          <tr style={{ backgroundColor: "#241C17" }}>
+          <tr style={{ backgroundColor: "var(--gw-surface-raised)" }}>
             {columns.map((col) => (
               <th
                 key={col.key}
                 onClick={() => toggleSort(col.key)}
-                className="text-left px-3 py-2.5 cursor-pointer select-none whitespace-nowrap"
-                style={{ color: "#9C8C79", borderBottom: "1px solid #3A2F27" }}
+                className={`text-left px-2 sm:px-3 py-2.5 cursor-pointer select-none whitespace-nowrap ${col.phone ? "" : phoneHidden}`}
+                style={{ color: "var(--gw-text-2)", borderBottom: "1px solid var(--gw-border)" }}
               >
                 <span className="inline-flex items-center gap-1 uppercase text-[11px] tracking-widest">
                   {col.label}
@@ -1064,7 +1068,7 @@ function SpreadsheetView({ items, displayMode, onEdit }: SpreadsheetViewProps) {
                 </span>
               </th>
             ))}
-            <th style={{ borderBottom: "1px solid #3A2F27" }}></th>
+            <th style={{ borderBottom: "1px solid var(--gw-border)" }}></th>
           </tr>
         </thead>
         <tbody>
@@ -1075,39 +1079,39 @@ function SpreadsheetView({ items, displayMode, onEdit }: SpreadsheetViewProps) {
               <tr
                 key={item.id}
                 style={{
-                  backgroundColor: idx % 2 === 0 ? "transparent" : "#211A15",
-                  borderBottom: "1px solid #2A2119",
+                  backgroundColor: idx % 2 === 0 ? "transparent" : "var(--gw-surface)",
+                  borderBottom: "1px solid var(--gw-border-faint)",
                 }}
               >
-                <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "#EDE3D3" }}>
+                <td className="px-2 sm:px-3 py-2.5 sm:whitespace-nowrap" style={{ color: "var(--gw-text)" }}>
                   {item.name}
                 </td>
-                <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "#9C8C79" }}>
+                <td className={`px-3 py-2.5 whitespace-nowrap ${phoneHidden}`} style={{ color: "var(--gw-text-2)" }}>
                   {CATEGORY_LABEL[item.category]}
                 </td>
-                <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "#EDE3D3" }}>
+                <td className="px-2 sm:px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--gw-text)" }}>
                   {qty.amount} {qty.label}
                 </td>
-                <td className="px-3 py-2.5" style={{ color: "#9C8C79" }}>
+                <td className={`px-3 py-2.5 ${phoneHidden}`} style={{ color: "var(--gw-text-2)" }}>
                   {item.unit}
                 </td>
-                <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "#9C8C79" }}>
+                <td className={`px-3 py-2.5 whitespace-nowrap ${phoneHidden}`} style={{ color: "var(--gw-text-2)" }}>
                   {displayThreshold(item, displayMode)}
                 </td>
-                <td className="px-3 py-2.5 whitespace-nowrap">
+                <td className="px-2 sm:px-3 py-2.5 sm:whitespace-nowrap">
                   <span className="inline-flex items-center gap-1.5">
                     <span
-                      className="inline-block rounded-full"
+                      className="inline-block rounded-full shrink-0"
                       style={{ width: 7, height: 7, backgroundColor: meta.color }}
                     />
                     <span style={{ color: meta.color }}>{meta.label}</span>
                   </span>
                 </td>
-                <td className="px-3 py-2.5 text-right">
+                <td className="pl-1 pr-2 sm:px-3 py-1 text-right">
                   <button
                     onClick={() => onEdit(item.id)}
-                    className="text-xs px-2 py-1 rounded border"
-                    style={{ borderColor: "#3A2F27", color: "#9C8C79" }}
+                    className="text-xs px-2.5 py-2 rounded border"
+                    style={{ borderColor: "var(--gw-border)", color: "var(--gw-text-2)" }}
                   >
                     Edit
                   </button>
@@ -1156,7 +1160,7 @@ function IngredientRow({ ingredient, items, onChangeAmount, onChangeItem, onRemo
         value={ingredient.itemId}
         onChange={(e) => onChangeItem(parseInt(e.target.value, 10))}
         className="flex-1 min-w-0 rounded-md border px-2 py-1.5 text-sm bg-transparent focus:outline-none"
-        style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+        style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
       >
         {items.filter((i) => i.unitSize).map((i) => (
           <option key={i.id} value={i.id} style={{ color: "#000" }}>
@@ -1176,12 +1180,12 @@ function IngredientRow({ ingredient, items, onChangeAmount, onChangeItem, onRemo
           if (!Number.isNaN(parsed)) onChangeAmount(parsed);
         }}
         className="w-16 rounded-md border px-2 py-1.5 text-sm text-center font-mono bg-transparent focus:outline-none"
-        style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+        style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
       />
-      <span className="text-xs font-mono w-14 shrink-0" style={{ color: "#9C8C79" }}>
+      <span className="text-xs font-mono w-14 shrink-0" style={{ color: "var(--gw-text-2)" }}>
         {item ? item.unitMeasure : ""}
       </span>
-      <button onClick={onRemove} style={{ color: "#B0492F" }}>
+      <button onClick={onRemove} style={{ color: "var(--gw-danger-text)" }}>
         <Trash2 size={14} />
       </button>
     </div>
@@ -1217,11 +1221,11 @@ function MenuItemCard({
   }
 
   return (
-    <div className="rounded-lg border p-4 mb-4" style={{ borderColor: "#3A2F27" }}>
+    <div className="rounded-lg border p-4 mb-4" style={{ borderColor: "var(--gw-border)" }}>
       <div className="flex items-center justify-between mb-2">
         <div
           className="font-semibold"
-          style={{ color: "#EDE3D3", fontFamily: "'Barlow Condensed', sans-serif", fontSize: 18 }}
+          style={{ color: "var(--gw-text)", fontFamily: "var(--font-display)", fontSize: 18 }}
         >
           {menuItem.name.toUpperCase()}
         </div>
@@ -1229,12 +1233,12 @@ function MenuItemCard({
           {remaining !== null && (
             <span
               className="font-mono text-xs"
-              style={{ color: remaining <= 10 ? "#B0492F" : remaining <= 25 ? "#C79A3E" : "#7A8F5E" }}
+              style={{ color: remaining <= 10 ? "var(--gw-danger-text)" : remaining <= 25 ? "var(--gw-warn)" : "var(--gw-ok)" }}
             >
               ~{remaining} left to sell
             </span>
           )}
-          <button onClick={onDelete} style={{ color: "#6E6153" }}>
+          <button onClick={onDelete} style={{ color: "var(--gw-text-3)" }}>
             <Trash2 size={14} />
           </button>
         </div>
@@ -1255,13 +1259,13 @@ function MenuItemCard({
         onClick={addIngredient}
         disabled={linkableItems.length === 0}
         className="mt-2 text-xs font-mono flex items-center gap-1.5 disabled:opacity-40"
-        style={{ color: "#C1663B" }}
+        style={{ color: "var(--gw-accent-text)" }}
       >
         <Plus size={12} /> Add ingredient
       </button>
 
       {hasUnmapped && (
-        <p className="text-[10px] font-mono mt-2" style={{ color: "#B0492F" }}>
+        <p className="text-[11px] font-mono mt-2" style={{ color: "var(--gw-danger-text)" }}>
           Some ingredients reference an item that no longer has a unit size set.
         </p>
       )}
@@ -1308,19 +1312,19 @@ function AddMenuItemForm({ items, menuItems, onAdd }: AddMenuItemFormProps) {
           }}
           onKeyDown={(e) => e.key === "Enter" && submit()}
           className="flex-1 rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+          style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
         />
         <button
           onClick={submit}
           disabled={linkableItems.length === 0}
           className="px-4 py-2 rounded-md text-sm font-mono font-semibold flex items-center gap-1.5 disabled:opacity-40"
-          style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
+          style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
         >
           <Plus size={14} /> Add
         </button>
       </div>
       {error && (
-        <p className="text-[10px] font-mono mt-2" style={{ color: "#B0492F" }}>
+        <p className="text-[11px] font-mono mt-2" style={{ color: "var(--gw-danger-text)" }}>
           {error}
         </p>
       )}
@@ -1356,11 +1360,11 @@ function EndOfShiftImport({ menuItems, onApply }: EndOfShiftImportProps) {
   }
 
   return (
-    <div className="rounded-lg border p-4" style={{ borderColor: "#3A2F27" }}>
-      <div className="font-mono text-xs uppercase tracking-widest mb-2 flex items-center gap-1.5" style={{ color: "#C1663B" }}>
+    <div className="rounded-lg border p-4" style={{ borderColor: "var(--gw-border)" }}>
+      <div className="font-mono text-xs uppercase tracking-widest mb-2 flex items-center gap-1.5" style={{ color: "var(--gw-accent-text)" }}>
         <Upload size={13} /> End-of-Shift Import
       </div>
-      <p className="text-xs mb-3" style={{ color: "#9C8C79" }}>
+      <p className="text-xs mb-3" style={{ color: "var(--gw-text-2)" }}>
         Paste sales from your POS export, one line per menu item: <span className="font-mono">Menu Item, Qty Sold</span>
       </p>
       <textarea
@@ -1369,21 +1373,21 @@ function EndOfShiftImport({ menuItems, onApply }: EndOfShiftImportProps) {
         placeholder={"Vanilla Latte, 24\nOat Milk Latte, 17"}
         rows={4}
         className="w-full rounded-md border px-3 py-2 text-sm font-mono bg-transparent focus:outline-none mb-3"
-        style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+        style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
       />
       <button
         onClick={apply}
         disabled={!text.trim()}
         className="px-4 py-2 rounded-md text-sm font-mono font-semibold disabled:opacity-40"
-        style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
+        style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
       >
         Apply Sales & Deduct Stock
       </button>
       {result && (
-        <div className="mt-3 text-xs font-mono" style={{ color: "#9C8C79" }}>
-          <div style={{ color: "#7A8F5E" }}>✓ Deducted stock for {result.applied} menu item line(s).</div>
+        <div className="mt-3 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
+          <div style={{ color: "var(--gw-ok)" }}>✓ Deducted stock for {result.applied} menu item line(s).</div>
           {result.unmatched.length > 0 && (
-            <div style={{ color: "#C79A3E" }} className="mt-1">
+            <div style={{ color: "var(--gw-warn)" }} className="mt-1">
               Didn&apos;t recognize: {result.unmatched.join(", ")} — check spelling matches your menu items exactly.
             </div>
           )}
@@ -1423,7 +1427,7 @@ function RecipesPage({
       {linkableCount === 0 && (
         <div
           className="rounded-lg border px-4 py-3 mb-6 text-sm"
-          style={{ borderColor: "#5A4A3C", backgroundColor: "#241C17", color: "#EDE3D3" }}
+          style={{ borderColor: "var(--gw-border-strong)", backgroundColor: "var(--gw-surface-raised)", color: "var(--gw-text)" }}
         >
           None of your inventory items have an &quot;amount per unit&quot; set yet. Edit an item (or add a new
           one) with something like 32 oz per carton before you can build a recipe.
@@ -1524,17 +1528,17 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
   return (
     <div>
       <h2
-        style={{ fontFamily: "'Barlow Condensed', sans-serif", color: "#EDE3D3", fontSize: 24, fontWeight: 700 }}
+        style={{ fontFamily: "var(--font-display)", color: "var(--gw-text)", fontSize: 24, fontWeight: 700 }}
         className="mb-1"
       >
         ALERTS
       </h2>
-      <p className="text-sm mb-4" style={{ color: "#9C8C79" }}>
-        <strong style={{ color: "#EDE3D3" }}>Restock:</strong> a text goes out the moment an item&apos;s status gets
+      <p className="text-sm mb-4" style={{ color: "var(--gw-text-2)" }}>
+        <strong style={{ color: "var(--gw-text)" }}>Restock:</strong> a text goes out the moment an item&apos;s status gets
         worse — Stocked to Reorder, or Reorder to Critical. No repeat texts while it just sits at the same status.
       </p>
-      <div className="flex items-center gap-2 mb-6 text-sm flex-wrap" style={{ color: "#9C8C79" }}>
-        <strong style={{ color: "#EDE3D3" }}>Expiration:</strong>
+      <div className="flex items-center gap-2 mb-6 text-sm flex-wrap" style={{ color: "var(--gw-text-2)" }}>
+        <strong style={{ color: "var(--gw-text)" }}>Expiration:</strong>
         <span>text</span>
         <input
           type="number"
@@ -1545,29 +1549,29 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
             if (days > 0) onChangeExpirationAlertDays(days);
           }}
           className="w-14 rounded-md border px-2 py-1 font-mono text-center bg-transparent focus:outline-none"
-          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+          style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
         />
         <span>day(s) before a batch expires, once, per batch.</span>
       </div>
-      <p className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color: "#6E6153" }}>
+      <p className="text-xs font-mono uppercase tracking-widest mb-3" style={{ color: "var(--gw-text-3)" }}>
         Sent to
       </p>
 
       {loading && (
-        <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "#6E6153" }}>
+        <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--gw-text-3)" }}>
           Loading…
         </div>
       )}
       {loadError && (
-        <div className="text-sm font-mono" style={{ color: "#B0492F" }}>
+        <div className="text-sm font-mono" style={{ color: "var(--gw-danger-text)" }}>
           {loadError}
         </div>
       )}
 
       {!loading && !loadError && (
         <>
-          <div className="rounded-lg border p-4 mb-4" style={{ borderColor: "#3A2F27" }}>
-            <label className="flex flex-col gap-1 text-xs font-mono mb-3" style={{ color: "#9C8C79" }}>
+          <div className="rounded-lg border p-4 mb-4" style={{ borderColor: "var(--gw-border)" }}>
+            <label className="flex flex-col gap-1 text-xs font-mono mb-3" style={{ color: "var(--gw-text-2)" }}>
               Phone number
               <input
                 type="tel"
@@ -1575,11 +1579,11 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
                 value={newPhone}
                 onChange={(e) => setNewPhone(e.target.value)}
                 className="rounded-md border px-3 py-2 font-mono bg-transparent focus:outline-none"
-                style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+                style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
               />
             </label>
 
-            <label className="flex items-start gap-2 text-xs mb-4 cursor-pointer" style={{ color: "#9C8C79" }}>
+            <label className="flex items-start gap-2 text-xs mb-4 cursor-pointer" style={{ color: "var(--gw-text-2)" }}>
               <input
                 type="checkbox"
                 checked={consentChecked}
@@ -1596,7 +1600,7 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
                     target="_blank"
                     rel="noreferrer"
                     className="underline font-semibold"
-                    style={{ color: "#EDE3D3" }}
+                    style={{ color: "var(--gw-text)" }}
                     onClick={(e) => e.stopPropagation()}
                   >
                     Privacy Policy
@@ -1606,7 +1610,7 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
                     target="_blank"
                     rel="noreferrer"
                     className="underline font-semibold"
-                    style={{ color: "#EDE3D3" }}
+                    style={{ color: "var(--gw-text)" }}
                     onClick={(e) => e.stopPropagation()}
                   >
                     Terms of Service
@@ -1619,20 +1623,20 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
               onClick={handleAdd}
               disabled={adding || !newPhone.trim() || !consentChecked}
               className="px-4 py-2 rounded-md text-sm font-mono font-semibold flex items-center gap-1.5 disabled:opacity-40"
-              style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
+              style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
             >
               <Plus size={14} /> {adding ? "Signing up…" : "Yes, sign me up!"}
             </button>
           </div>
 
           {actionError && (
-            <div className="text-xs font-mono mb-4" style={{ color: "#B0492F" }}>
+            <div className="text-xs font-mono mb-4" style={{ color: "var(--gw-danger-text)" }}>
               {actionError}
             </div>
           )}
 
           {recipients.length === 0 ? (
-            <p className="text-sm" style={{ color: "#9C8C79" }}>
+            <p className="text-sm" style={{ color: "var(--gw-text-2)" }}>
               No recipients yet — add a phone number above to start getting restock texts.
             </p>
           ) : (
@@ -1641,12 +1645,12 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
                 <div
                   key={r.id}
                   className="flex items-center justify-between rounded-lg border px-4 py-3"
-                  style={{ borderColor: "#3A2F27" }}
+                  style={{ borderColor: "var(--gw-border)" }}
                 >
-                  <span className="font-mono text-sm" style={{ color: "#EDE3D3" }}>
+                  <span className="font-mono text-sm" style={{ color: "var(--gw-text)" }}>
                     {r.phone}
                   </span>
-                  <button onClick={() => handleRemove(r.id)} style={{ color: "#6E6153" }} aria-label="Remove">
+                  <button onClick={() => handleRemove(r.id)} style={{ color: "var(--gw-text-3)" }} aria-label="Remove">
                     <Trash2 size={14} />
                   </button>
                 </div>
@@ -1784,20 +1788,20 @@ function LoginScreen() {
   return (
     <div
       className="min-h-screen w-full flex items-center justify-center px-5"
-      style={{ backgroundColor: "#1B1512", fontFamily: "'Inter', sans-serif" }}
+      style={{ backgroundColor: "var(--gw-bg)", fontFamily: "var(--font-sans)" }}
     >
       <form
         onSubmit={handleSubmit}
         className="w-full max-w-sm rounded-lg border p-6"
-        style={{ borderColor: "#3A2F27", backgroundColor: "#211A15" }}
+        style={{ borderColor: "var(--gw-border)", backgroundColor: "var(--gw-surface)" }}
       >
-        <div className="font-mono text-xs uppercase tracking-[0.25em] mb-2" style={{ color: "#C1663B" }}>
+        <div className="font-mono text-xs uppercase tracking-[0.25em] mb-2" style={{ color: "var(--gw-accent-text)" }}>
           GroundWorks
         </div>
         <h1
           style={{
-            fontFamily: "'Barlow Condensed', sans-serif",
-            color: "#EDE3D3",
+            fontFamily: "var(--font-display)",
+            color: "var(--gw-text)",
             fontSize: 28,
             fontWeight: 700,
             letterSpacing: "0.01em",
@@ -1806,7 +1810,7 @@ function LoginScreen() {
         >
           {authMode === "sign-in" ? "SHOP LOGIN" : authMode === "sign-up" ? "CREATE YOUR SHOP" : "RESET PASSWORD"}
         </h1>
-        <p className="text-xs mb-5" style={{ color: "#9C8C79" }}>
+        <p className="text-xs mb-5" style={{ color: "var(--gw-text-2)" }}>
           {authMode === "sign-in"
             ? "Sign in with your shop's email and password."
             : authMode === "sign-up"
@@ -1816,7 +1820,7 @@ function LoginScreen() {
 
         {authMode === "sign-up" && (
           <>
-            <label className="block text-xs font-mono mb-1.5" style={{ color: "#9C8C79" }}>
+            <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--gw-text-2)" }}>
               Shop name
             </label>
             <input
@@ -1824,12 +1828,12 @@ function LoginScreen() {
               onChange={(e) => setShopName(e.target.value)}
               placeholder="e.g. Cedar & Fig Coffee"
               className="w-full rounded-md border px-3 py-2 mb-4 bg-transparent focus:outline-none"
-              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+              style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
             />
           </>
         )}
 
-        <label className="block text-xs font-mono mb-1.5" style={{ color: "#9C8C79" }}>
+        <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--gw-text-2)" }}>
           Email
         </label>
         <input
@@ -1839,12 +1843,12 @@ function LoginScreen() {
           placeholder="you@shop.com"
           autoComplete="email"
           className="w-full rounded-md border px-3 py-2 mb-4 bg-transparent focus:outline-none"
-          style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+          style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
         />
 
         {authMode !== "forgot-password" && (
           <>
-            <label className="block text-xs font-mono mb-1.5" style={{ color: "#9C8C79" }}>
+            <label className="block text-xs font-mono mb-1.5" style={{ color: "var(--gw-text-2)" }}>
               Password
             </label>
             <input
@@ -1854,7 +1858,7 @@ function LoginScreen() {
               placeholder="••••••••"
               autoComplete={authMode === "sign-up" ? "new-password" : "current-password"}
               className="w-full rounded-md border px-3 py-2 mb-2 bg-transparent focus:outline-none"
-              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+              style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
             />
           </>
         )}
@@ -1868,19 +1872,19 @@ function LoginScreen() {
               setNotice("");
             }}
             className="text-xs font-mono underline underline-offset-2"
-            style={{ color: "#9C8C79" }}
+            style={{ color: "var(--gw-text-2)" }}
           >
             Forgot password?
           </button>
         )}
 
         {error && (
-          <div className="text-xs font-mono mt-2" style={{ color: "#B0492F" }}>
+          <div className="text-xs font-mono mt-2" style={{ color: "var(--gw-danger-text)" }}>
             {error}
           </div>
         )}
         {notice && (
-          <div className="text-xs font-mono mt-2" style={{ color: "#7A8F5E" }}>
+          <div className="text-xs font-mono mt-2" style={{ color: "var(--gw-ok)" }}>
             {notice}
           </div>
         )}
@@ -1889,7 +1893,7 @@ function LoginScreen() {
           type="submit"
           disabled={busy}
           className="w-full mt-5 px-4 py-2.5 rounded-md text-sm font-mono font-semibold disabled:opacity-60"
-          style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
+          style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
         >
           {busy
             ? "Working…"
@@ -1908,7 +1912,7 @@ function LoginScreen() {
             setNotice("");
           }}
           className="w-full mt-3 text-xs font-mono underline underline-offset-2"
-          style={{ color: "#9C8C79" }}
+          style={{ color: "var(--gw-text-2)" }}
         >
           {authMode === "sign-in"
             ? "New shop? Create an account"
@@ -1920,11 +1924,11 @@ function LoginScreen() {
         {authMode !== "forgot-password" && (
           <>
             <div className="my-4 flex items-center gap-3">
-              <div className="h-px flex-1" style={{ backgroundColor: "#3A2F27" }} />
-              <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "#6E6153" }}>
+              <div className="h-px flex-1" style={{ backgroundColor: "var(--gw-border)" }} />
+              <span className="font-mono text-[11px] uppercase tracking-widest" style={{ color: "var(--gw-text-3)" }}>
                 or
               </span>
-              <div className="h-px flex-1" style={{ backgroundColor: "#3A2F27" }} />
+              <div className="h-px flex-1" style={{ backgroundColor: "var(--gw-border)" }} />
             </div>
 
             <button
@@ -1932,7 +1936,7 @@ function LoginScreen() {
               onClick={handleTryDemo}
               disabled={busy}
               className="w-full px-4 py-2.5 rounded-md text-sm font-mono font-semibold border disabled:opacity-60"
-              style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+              style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
             >
               {busy ? "Working…" : "Try the demo — no signup needed"}
             </button>
@@ -1957,6 +1961,12 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
   // is always "standard" or "pro". It's read-only — see shop-data.ts.
   const tier = shop.tier;
   const isDemoShop = shop.id === DEMO_SHOP_ID;
+  const pageTabs: { id: Page; label: string; Icon: LucideIcon }[] = [
+    { id: "update", label: "Update", Icon: PencilLine },
+    { id: "spreadsheet", label: "Spreadsheet", Icon: Table2 },
+    { id: "recipes", label: "Recipes", Icon: tier === "standard" ? Lock : BookOpen },
+    { id: "alerts", label: "Alerts", Icon: Bell },
+  ];
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   // Perishable expiration batches — NOT related to `mode === "batch"`
@@ -2476,8 +2486,8 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center" style={{ backgroundColor: "#1B1512" }}>
-        <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "#6E6153" }}>
+      <div className="min-h-screen w-full flex items-center justify-center" style={{ backgroundColor: "var(--gw-bg)" }}>
+        <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--gw-text-3)" }}>
           Loading your shop…
         </div>
       </div>
@@ -2488,16 +2498,16 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
     return (
       <div
         className="min-h-screen w-full flex items-center justify-center px-5 text-center"
-        style={{ backgroundColor: "#1B1512" }}
+        style={{ backgroundColor: "var(--gw-bg)" }}
       >
         <div>
-          <div className="font-mono text-sm mb-3" style={{ color: "#B0492F" }}>
+          <div className="font-mono text-sm mb-3" style={{ color: "var(--gw-danger-text)" }}>
             {loadError}
           </div>
           <button
             onClick={onLogout}
             className="font-mono text-xs underline underline-offset-2"
-            style={{ color: "#9C8C79" }}
+            style={{ color: "var(--gw-text-2)" }}
           >
             Switch shop
           </button>
@@ -2509,7 +2519,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
   return (
     <div
       className="min-h-screen w-full"
-      style={{ backgroundColor: "#1B1512", fontFamily: "'Inter', sans-serif" }}
+      style={{ backgroundColor: "var(--gw-bg)", fontFamily: "var(--font-sans)" }}
     >
       <div className="max-w-2xl md:max-w-4xl mx-auto px-5 py-10">
         {/* Header */}
@@ -2517,8 +2527,8 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
           <div>
             <h1
               style={{
-                fontFamily: "'Barlow Condensed', sans-serif",
-                color: "#EDE3D3",
+                fontFamily: "var(--font-display)",
+                color: "var(--gw-text)",
                 fontSize: 40,
                 fontWeight: 700,
                 letterSpacing: "0.01em",
@@ -2527,20 +2537,20 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
             >
               GROUNDWORKS
             </h1>
-            <p className="text-sm mt-2" style={{ color: "#9C8C79" }}>
+            <p className="text-sm mt-2" style={{ color: "var(--gw-text-2)" }}>
               {shopName}
             </p>
           </div>
           <div className="flex flex-col items-end gap-2 shrink-0 mt-1">
-            <Package size={28} style={{ color: "#5A4A3C" }} />
+            <Package size={28} style={{ color: "var(--gw-border-strong)" }} />
             <div className="text-right">
-              <div className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "#6E6153" }}>
+              <div className="font-mono text-[11px] uppercase tracking-widest" style={{ color: "var(--gw-text-3)" }}>
                 {pendingSaves > 0 ? "Saving…" : "Signed in"}
               </div>
               <button
                 onClick={onLogout}
                 className="font-mono text-xs mt-1 underline underline-offset-2"
-                style={{ color: "#9C8C79" }}
+                style={{ color: "var(--gw-text-2)" }}
               >
                 Switch shop
               </button>
@@ -2549,153 +2559,130 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
         </div>
 
         {/* Page switcher */}
-        <div className="flex items-center justify-between gap-3 mb-8 flex-wrap">
-          <div
-            className="flex items-center gap-1 p-1 rounded-lg border overflow-x-auto max-w-full"
-            style={{ borderColor: "#3A2F27", backgroundColor: "#1F1712" }}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+          <nav
+            aria-label="Sections"
+            className="flex w-full sm:w-fit gap-1 p-1 rounded-lg border"
+            style={{ borderColor: "var(--gw-border)", backgroundColor: "var(--gw-surface-sunk)" }}
           >
-            <button
-              onClick={() => setPage("update")}
-              className="px-3 sm:px-4 py-2 rounded-md text-sm font-mono flex items-center justify-center gap-2 transition-colors shrink-0"
-              style={{
-                backgroundColor: page === "update" ? "#2A211C" : "transparent",
-                color: page === "update" ? "#EDE3D3" : "#6E6153",
-              }}
-            >
-              <PencilLine size={14} /> <span className="hidden sm:inline">Update</span>
-            </button>
-            <button
-              onClick={() => setPage("spreadsheet")}
-              className="px-3 sm:px-4 py-2 rounded-md text-sm font-mono flex items-center justify-center gap-2 transition-colors shrink-0"
-              style={{
-                backgroundColor: page === "spreadsheet" ? "#2A211C" : "transparent",
-                color: page === "spreadsheet" ? "#EDE3D3" : "#6E6153",
-              }}
-            >
-              <Table2 size={14} /> <span className="hidden sm:inline">Spreadsheet</span>
-            </button>
-            <button
-              onClick={() => setPage("recipes")}
-              className="px-3 sm:px-4 py-2 rounded-md text-sm font-mono flex items-center justify-center gap-2 transition-colors shrink-0"
-              style={{
-                backgroundColor: page === "recipes" ? "#2A211C" : "transparent",
-                color: page === "recipes" ? "#EDE3D3" : "#6E6153",
-              }}
-            >
-              {tier === "standard" ? <Lock size={14} /> : <BookOpen size={14} />}{" "}
-              <span className="hidden sm:inline">Recipes</span>
-            </button>
-            <button
-              onClick={() => setPage("alerts")}
-              className="px-3 sm:px-4 py-2 rounded-md text-sm font-mono flex items-center justify-center gap-2 transition-colors shrink-0"
-              style={{
-                backgroundColor: page === "alerts" ? "#2A211C" : "transparent",
-                color: page === "alerts" ? "#EDE3D3" : "#6E6153",
-              }}
-            >
-              <Bell size={14} /> <span className="hidden sm:inline">Alerts</span>
-            </button>
-          </div>
+            {pageTabs.map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                onClick={() => setPage(id)}
+                aria-current={page === id ? "page" : undefined}
+                className="flex-1 sm:flex-none px-1 sm:px-4 py-2 min-h-11 rounded-md font-mono flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 text-[11px] sm:text-sm"
+                style={{
+                  backgroundColor: page === id ? "var(--gw-surface-selected)" : "transparent",
+                  color: page === id ? "var(--gw-text)" : "var(--gw-text-3)",
+                }}
+              >
+                <Icon size={16} /> {label}
+              </button>
+            ))}
+          </nav>
 
-          <div className="flex items-center gap-3">
-            <div
-              className="flex items-center gap-1 p-1 rounded-lg border w-fit"
-              style={{ borderColor: "#3A2F27", backgroundColor: "#1F1712" }}
-              title="How quantities are shown — count of units, or a converted total amount"
-            >
-              <button
-                onClick={() => changeDisplayMode("count")}
-                className="px-3 py-1.5 rounded-md text-xs font-mono transition-colors"
-                style={{
-                  backgroundColor: displayMode === "count" ? "#2A211C" : "transparent",
-                  color: displayMode === "count" ? "#EDE3D3" : "#6E6153",
-                }}
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Count/Amount only changes how Update and Spreadsheet show quantities */}
+            {(page === "update" || page === "spreadsheet") && (
+              <div
+                className="flex items-center gap-1 p-1 rounded-lg border w-fit"
+                style={{ borderColor: "var(--gw-border)", backgroundColor: "var(--gw-surface-sunk)" }}
+                title="How quantities are shown — count of units, or a converted total amount"
               >
-                Count
-              </button>
-              <button
-                onClick={() => changeDisplayMode("measurement")}
-                className="px-3 py-1.5 rounded-md text-xs font-mono transition-colors"
-                style={{
-                  backgroundColor: displayMode === "measurement" ? "#2A211C" : "transparent",
-                  color: displayMode === "measurement" ? "#EDE3D3" : "#6E6153",
-                }}
-              >
-                Amount
-              </button>
-            </div>
+                <button
+                  onClick={() => changeDisplayMode("count")}
+                  className="px-3 py-2 rounded-md text-xs font-mono"
+                  style={{
+                    backgroundColor: displayMode === "count" ? "var(--gw-surface-selected)" : "transparent",
+                    color: displayMode === "count" ? "var(--gw-text)" : "var(--gw-text-3)",
+                  }}
+                >
+                  Count
+                </button>
+                <button
+                  onClick={() => changeDisplayMode("measurement")}
+                  className="px-3 py-2 rounded-md text-xs font-mono"
+                  style={{
+                    backgroundColor: displayMode === "measurement" ? "var(--gw-surface-selected)" : "transparent",
+                    color: displayMode === "measurement" ? "var(--gw-text)" : "var(--gw-text-3)",
+                  }}
+                >
+                  Amount
+                </button>
+              </div>
+            )}
 
             {isDemoShop ? (
               <div
-                className="px-3 py-1.5 rounded-full text-[11px] font-mono border"
-                style={{ borderColor: "#3A2F27", color: "#6E6153" }}
+                className="px-3 py-2 rounded-full text-[11px] font-mono border"
+                style={{ borderColor: "var(--gw-border)", color: "var(--gw-text-3)" }}
               >
-                ★ Pro plan · Demo mode — billing disabled
+                ★ Pro plan · Demo, billing off
               </div>
             ) : (
-            <button
-              onClick={openBillingPortal}
-              disabled={portalLoading}
-              className="px-3 py-1.5 rounded-full text-[11px] font-mono border disabled:opacity-60"
-              style={{
-                borderColor: tier === "pro" ? "#C1663B" : "#3A2F27",
-                color: tier === "pro" ? "#C1663B" : "#6E6153",
-              }}
-            >
-              {tier === "pro" ? "★ Pro plan" : "Standard plan"} · {portalLoading ? "Opening…" : "Manage billing"}
-            </button>
+              <button
+                onClick={openBillingPortal}
+                disabled={portalLoading}
+                className="px-3 py-2 rounded-full text-[11px] font-mono border disabled:opacity-60"
+                style={{
+                  borderColor: tier === "pro" ? "var(--gw-accent)" : "var(--gw-border)",
+                  color: tier === "pro" ? "var(--gw-accent-text)" : "var(--gw-text-3)",
+                }}
+              >
+                {tier === "pro" ? "★ Pro plan" : "Standard plan"} · {portalLoading ? "Opening…" : "Manage billing"}
+              </button>
             )}
           </div>
         </div>
 
-        {/* Status summary strip */}
+        {page === "update" && (
+        <>
+        {/* Status summary strip — only on Update; the other tabs don't use it */}
         <div className="grid grid-cols-3 gap-3 mb-8">
           {(["critical", "low", "good"] as Status[]).map((s) => (
             <div
               key={s}
               className="rounded-lg border px-3 py-3 text-center"
-              style={{ borderColor: "#3A2F27" }}
+              style={{ borderColor: "var(--gw-border)" }}
             >
               <div className="font-mono text-2xl font-bold" style={{ color: STATUS_META[s].color }}>
                 {counts[s]}
               </div>
-              <div className="font-mono text-[10px] uppercase tracking-widest mt-1" style={{ color: "#9C8C79" }}>
+              <div className="font-mono text-[11px] uppercase tracking-widest mt-1" style={{ color: "var(--gw-text-2)" }}>
                 {STATUS_META[s].label}
               </div>
             </div>
           ))}
         </div>
 
-        {page === "update" && (
-        <>
-        {/* Mode switcher */}
-        <div className="flex items-center gap-2 mb-6 flex-wrap">
+        {/* Mode switcher: two equal segments, and "New item" as its own deliberate row on a phone */}
+        <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 mb-6">
           <button
             onClick={() => setMode("quick")}
-            className="px-4 py-2 rounded-full text-sm font-mono flex items-center gap-2 border transition-colors"
+            className="px-3 py-2 min-h-11 rounded-full text-sm font-mono flex items-center justify-center gap-2 border whitespace-nowrap"
             style={{
-              borderColor: mode === "quick" ? "#C1663B" : "#3A2F27",
-              backgroundColor: mode === "quick" ? "#C1663B" : "transparent",
-              color: mode === "quick" ? "#1B1512" : "#9C8C79",
+              borderColor: mode === "quick" ? "var(--gw-accent)" : "var(--gw-border)",
+              backgroundColor: mode === "quick" ? "var(--gw-accent)" : "transparent",
+              color: mode === "quick" ? "var(--gw-bg)" : "var(--gw-text-2)",
             }}
           >
             <Plus size={14} /> Quick Log
           </button>
           <button
             onClick={enterBatchMode}
-            className="px-4 py-2 rounded-full text-sm font-mono flex items-center gap-2 border transition-colors"
+            className="px-3 py-2 min-h-11 rounded-full text-sm font-mono flex items-center justify-center gap-2 border whitespace-nowrap"
             style={{
-              borderColor: mode === "batch" ? "#C1663B" : "#3A2F27",
-              backgroundColor: mode === "batch" ? "#C1663B" : "transparent",
-              color: mode === "batch" ? "#1B1512" : "#9C8C79",
+              borderColor: mode === "batch" ? "var(--gw-accent)" : "var(--gw-border)",
+              backgroundColor: mode === "batch" ? "var(--gw-accent)" : "transparent",
+              color: mode === "batch" ? "var(--gw-bg)" : "var(--gw-text-2)",
             }}
           >
             <ClipboardList size={14} /> Closing Count
           </button>
           <button
             onClick={() => setShowAdd((v) => !v)}
-            className="ml-auto px-4 py-2 rounded-full text-sm font-mono border"
-            style={{ borderColor: "#3A2F27", color: "#9C8C79" }}
+            className="col-span-2 sm:col-span-1 sm:ml-auto px-4 py-2 min-h-11 rounded-full text-sm font-mono flex items-center justify-center border border-dashed"
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text-2)" }}
           >
             + New item
           </button>
@@ -2743,15 +2730,15 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
         {mode === "batch" && (
           <div
             className="rounded-lg border px-4 py-3 mb-6 flex items-center justify-between"
-            style={{ borderColor: "#5A4A3C", backgroundColor: "#241C17" }}
+            style={{ borderColor: "var(--gw-border-strong)", backgroundColor: "var(--gw-surface-raised)" }}
           >
-            <span className="text-sm" style={{ color: "#EDE3D3" }}>
+            <span className="text-sm" style={{ color: "var(--gw-text)" }}>
               Walk the storage room, update every count, then save once.
             </span>
             <button
               onClick={saveBatch}
               className="px-4 py-2 rounded-md text-sm font-mono font-semibold flex items-center gap-1.5"
-              style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
+              style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
             >
               <Check size={14} /> Save Closing Count
             </button>
@@ -2759,13 +2746,13 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
         )}
 
         {savedFlash && (
-          <div className="mb-6 text-sm font-mono" style={{ color: "#7A8F5E" }}>
+          <div className="mb-6 text-sm font-mono" style={{ color: "var(--gw-ok)" }}>
             ✓ Closing count saved.
           </div>
         )}
 
         {actionError && (
-          <div className="mb-6 text-sm font-mono" style={{ color: "#B0492F" }}>
+          <div className="mb-6 text-sm font-mono" style={{ color: "var(--gw-danger-text)" }}>
             {actionError}
           </div>
         )}
@@ -2773,7 +2760,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
         {items.length === 0 && (
           <div
             className="rounded-lg border px-4 py-6 mb-8 text-center text-sm"
-            style={{ borderColor: "#3A2F27", color: "#9C8C79" }}
+            style={{ borderColor: "var(--gw-border)", color: "var(--gw-text-2)" }}
           >
             No inventory yet — add your first item above to get started.
           </div>
@@ -2794,20 +2781,20 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
                 className="w-full flex items-center gap-2 mb-3"
                 aria-expanded={!collapsed}
               >
-                <Icon size={16} style={{ color: "#C1663B" }} />
+                <Icon size={16} style={{ color: "var(--gw-accent-text)" }} />
                 <h2
                   className="font-semibold uppercase tracking-wide text-sm"
-                  style={{ color: "#EDE3D3", fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: "0.08em" }}
+                  style={{ color: "var(--gw-text)", fontFamily: "var(--font-display)", letterSpacing: "0.08em" }}
                 >
                   {cat.label}
                 </h2>
-                <span className="text-xs font-mono" style={{ color: "#6E6153" }}>
+                <span className="text-xs font-mono" style={{ color: "var(--gw-text-3)" }}>
                   ({catItems.length})
                 </span>
                 <ChevronDown
                   size={16}
                   style={{
-                    color: "#6E6153",
+                    color: "var(--gw-text-3)",
                     marginLeft: "auto",
                     transform: collapsed ? "rotate(-90deg)" : undefined,
                     transition: "transform 120ms ease",
@@ -2847,16 +2834,16 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
         {page === "recipes" && tier === "standard" && (
           <div
             className="rounded-lg border p-8 text-center"
-            style={{ borderColor: "#3A2F27", backgroundColor: "#211A15" }}
+            style={{ borderColor: "var(--gw-border)", backgroundColor: "var(--gw-surface)" }}
           >
-            <Lock size={22} className="mx-auto mb-3" style={{ color: "#5A4A3C" }} />
+            <Lock size={22} className="mx-auto mb-3" style={{ color: "var(--gw-border-strong)" }} />
             <div
               className="font-semibold mb-2"
-              style={{ color: "#EDE3D3", fontFamily: "'Barlow Condensed', sans-serif", fontSize: 20 }}
+              style={{ color: "var(--gw-text)", fontFamily: "var(--font-display)", fontSize: 20 }}
             >
               RECIPES IS A PRO FEATURE
             </div>
-            <p className="text-sm mb-4 max-w-sm mx-auto" style={{ color: "#9C8C79" }}>
+            <p className="text-sm mb-4 max-w-sm mx-auto" style={{ color: "var(--gw-text-2)" }}>
               Map menu items to ingredients so a sale automatically deducts stock, and import
               your end-of-shift POS sales to update everything at once.
             </p>
@@ -2864,7 +2851,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
               onClick={openBillingPortal}
               disabled={portalLoading}
               className="px-4 py-2 rounded-md text-sm font-mono font-semibold disabled:opacity-60"
-              style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
+              style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
             >
               {portalLoading ? "Opening…" : "Upgrade to Pro — $50/mo"}
             </button>
@@ -2893,7 +2880,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
           />
         )}
 
-        <div className="text-center font-mono text-[10px] uppercase tracking-widest mt-10" style={{ color: "#4A3F35" }}>
+        <div className="text-center font-mono text-[11px] uppercase tracking-widest mt-10" style={{ color: "var(--gw-text-3)" }}>
           Text alerts fire automatically when an item crosses into Reorder or Critical
         </div>
       </div>
@@ -2939,25 +2926,25 @@ function NoPlanScreen({ shopName, onLogout }: NoPlanScreenProps) {
   return (
     <div
       className="min-h-screen w-full flex items-center justify-center px-5"
-      style={{ backgroundColor: "#1B1512", fontFamily: "'Inter', sans-serif" }}
+      style={{ backgroundColor: "var(--gw-bg)", fontFamily: "var(--font-sans)" }}
     >
       <div
         className="w-full max-w-md rounded-lg border p-6 text-center"
-        style={{ borderColor: "#3A2F27", backgroundColor: "#211A15" }}
+        style={{ borderColor: "var(--gw-border)", backgroundColor: "var(--gw-surface)" }}
       >
-        <div className="font-mono text-xs uppercase tracking-[0.25em] mb-2" style={{ color: "#C1663B" }}>
+        <div className="font-mono text-xs uppercase tracking-[0.25em] mb-2" style={{ color: "var(--gw-accent-text)" }}>
           GroundWorks
         </div>
         <h1
-          style={{ fontFamily: "'Barlow Condensed', sans-serif", color: "#EDE3D3", fontSize: 26, fontWeight: 700 }}
+          style={{ fontFamily: "var(--font-display)", color: "var(--gw-text)", fontSize: 26, fontWeight: 700 }}
           className="mb-2"
         >
           CHOOSE A PLAN FOR {shopName.toUpperCase()}
         </h1>
-        <p className="text-sm mb-2" style={{ color: "#9C8C79" }}>
+        <p className="text-sm mb-2" style={{ color: "var(--gw-text-2)" }}>
           Every shop needs an active plan to get into the dashboard.
         </p>
-        <p className="text-xs mb-6" style={{ color: "#6E6153" }}>
+        <p className="text-xs mb-6" style={{ color: "var(--gw-text-3)" }}>
           New shops also pay a one-time $200 setup fee, charged once alongside your first month.
         </p>
 
@@ -2966,10 +2953,10 @@ function NoPlanScreen({ shopName, onLogout }: NoPlanScreenProps) {
             onClick={() => subscribe("standard")}
             disabled={loadingPlan !== null}
             className="w-full px-4 py-3 rounded-md text-sm font-mono font-semibold border disabled:opacity-60 text-left"
-            style={{ borderColor: "#5A4A3C", color: "#EDE3D3" }}
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
           >
             {loadingPlan === "standard" ? "Redirecting…" : "Standard — $40/mo"}
-            <div className="text-xs font-normal mt-1" style={{ color: "#9C8C79" }}>
+            <div className="text-xs font-normal mt-1" style={{ color: "var(--gw-text-2)" }}>
               Inventory tracking, no recipes
             </div>
           </button>
@@ -2977,17 +2964,17 @@ function NoPlanScreen({ shopName, onLogout }: NoPlanScreenProps) {
             onClick={() => subscribe("pro")}
             disabled={loadingPlan !== null}
             className="w-full px-4 py-3 rounded-md text-sm font-mono font-semibold disabled:opacity-60 text-left"
-            style={{ backgroundColor: "#C1663B", color: "#1B1512" }}
+            style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
           >
             {loadingPlan === "pro" ? "Redirecting…" : "Pro — $50/mo"}
-            <div className="text-xs font-normal mt-1" style={{ color: "#1B1512", opacity: 0.7 }}>
+            <div className="text-xs font-normal mt-1" style={{ color: "var(--gw-bg)", opacity: 0.7 }}>
               Everything in Standard, plus recipes
             </div>
           </button>
         </div>
 
         {error && (
-          <div className="text-xs font-mono mb-4" style={{ color: "#B0492F" }}>
+          <div className="text-xs font-mono mb-4" style={{ color: "var(--gw-danger-text)" }}>
             {error}
           </div>
         )}
@@ -2995,7 +2982,7 @@ function NoPlanScreen({ shopName, onLogout }: NoPlanScreenProps) {
         <button
           onClick={onLogout}
           className="font-mono text-xs underline underline-offset-2"
-          style={{ color: "#9C8C79" }}
+          style={{ color: "var(--gw-text-2)" }}
         >
           Switch shop
         </button>
@@ -3007,7 +2994,7 @@ function NoPlanScreen({ shopName, onLogout }: NoPlanScreenProps) {
 // ---- Admin panel (view-only) ---------------------------------------------------------
 
 const TIER_LABEL: Record<Tier, string> = { none: "No plan", standard: "Standard", pro: "★ Pro" };
-const TIER_COLOR: Record<Tier, string> = { none: "#6E6153", standard: "#7A8F5E", pro: "#C1663B" };
+const TIER_COLOR: Record<Tier, string> = { none: "var(--gw-text-3)", standard: "var(--gw-ok)", pro: "var(--gw-accent)" };
 
 interface AdminShopDetailProps {
   shop: ShopSummary;
@@ -3080,12 +3067,12 @@ function AdminShopDetail({ shop, onBack, onTierChanged }: AdminShopDetailProps) 
       <button
         onClick={onBack}
         className="font-mono text-xs mb-6 underline underline-offset-2"
-        style={{ color: "#9C8C79" }}
+        style={{ color: "var(--gw-text-2)" }}
       >
         ← All shops
       </button>
       <h2
-        style={{ fontFamily: "'Barlow Condensed', sans-serif", color: "#EDE3D3", fontSize: 28, fontWeight: 700 }}
+        style={{ fontFamily: "var(--font-display)", color: "var(--gw-text)", fontSize: 28, fontWeight: 700 }}
         className="mb-1"
       >
         {shop.name.toUpperCase()}
@@ -3094,8 +3081,8 @@ function AdminShopDetail({ shop, onBack, onTierChanged }: AdminShopDetailProps) 
         {TIER_LABEL[shop.tier]}
       </p>
 
-      <div className="rounded-lg border p-4 mb-8" style={{ borderColor: "#3A2F27", backgroundColor: "#211A15" }}>
-        <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: "#C1663B" }}>
+      <div className="rounded-lg border p-4 mb-8" style={{ borderColor: "var(--gw-border)", backgroundColor: "var(--gw-surface)" }}>
+        <div className="font-mono text-xs uppercase tracking-widest mb-3" style={{ color: "var(--gw-accent-text)" }}>
           Override plan
         </div>
         <div className="flex items-center gap-2 mb-3">
@@ -3106,26 +3093,26 @@ function AdminShopDetail({ shop, onBack, onTierChanged }: AdminShopDetailProps) 
               disabled={tierUpdating || t === shop.tier}
               className="px-3 py-1.5 rounded-full text-xs font-mono border disabled:opacity-40"
               style={{
-                borderColor: t === shop.tier ? TIER_COLOR[t] : "#3A2F27",
+                borderColor: t === shop.tier ? TIER_COLOR[t] : "var(--gw-border)",
                 backgroundColor: t === shop.tier ? TIER_COLOR[t] : "transparent",
-                color: t === shop.tier ? "#1B1512" : "#9C8C79",
+                color: t === shop.tier ? "var(--gw-bg)" : "var(--gw-text-2)",
               }}
             >
               {TIER_LABEL[t]}
             </button>
           ))}
           {tierUpdating && (
-            <span className="font-mono text-xs" style={{ color: "#6E6153" }}>
+            <span className="font-mono text-xs" style={{ color: "var(--gw-text-3)" }}>
               Saving…
             </span>
           )}
         </div>
         {tierError && (
-          <div className="text-xs font-mono mb-2" style={{ color: "#B0492F" }}>
+          <div className="text-xs font-mono mb-2" style={{ color: "var(--gw-danger-text)" }}>
             {tierError}
           </div>
         )}
-        <p className="text-[10px] font-mono leading-relaxed" style={{ color: "#6E6153" }}>
+        <p className="text-[11px] font-mono leading-relaxed" style={{ color: "var(--gw-text-3)" }}>
           {hasActiveSubscription
             ? `This shop has an active Stripe subscription (${shop.subscriptionStatus}) — an override here can get replaced the next time Stripe sends a billing event (renewal, plan change, etc.). Use the shop's own Stripe subscription if you need a permanent change.`
             : "This shop has no active Stripe subscription, so an override here sticks until they ever subscribe through Stripe."}
@@ -3133,35 +3120,35 @@ function AdminShopDetail({ shop, onBack, onTierChanged }: AdminShopDetailProps) 
       </div>
 
       {loading && (
-        <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "#6E6153" }}>
+        <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--gw-text-3)" }}>
           Loading…
         </div>
       )}
       {loadError && (
-        <div className="text-sm font-mono" style={{ color: "#B0492F" }}>
+        <div className="text-sm font-mono" style={{ color: "var(--gw-danger-text)" }}>
           {loadError}
         </div>
       )}
 
       {!loading && !loadError && (
         <>
-          <h3 className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: "#C1663B" }}>
+          <h3 className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: "var(--gw-accent-text)" }}>
             Inventory ({items.length})
           </h3>
           {items.length === 0 ? (
-            <p className="text-sm mb-8" style={{ color: "#9C8C79" }}>
+            <p className="text-sm mb-8" style={{ color: "var(--gw-text-2)" }}>
               No items.
             </p>
           ) : (
-            <div className="rounded-lg border overflow-x-auto mb-8" style={{ borderColor: "#3A2F27" }}>
+            <div className="rounded-lg border overflow-x-auto mb-8" style={{ borderColor: "var(--gw-border)" }}>
               <table className="w-full border-collapse font-mono text-sm">
                 <thead>
-                  <tr style={{ backgroundColor: "#241C17" }}>
+                  <tr style={{ backgroundColor: "var(--gw-surface-raised)" }}>
                     {["Item", "Category", "Count", "Threshold"].map((label) => (
                       <th
                         key={label}
                         className="text-left px-3 py-2 text-[11px] uppercase tracking-widest"
-                        style={{ color: "#9C8C79", borderBottom: "1px solid #3A2F27" }}
+                        style={{ color: "var(--gw-text-2)", borderBottom: "1px solid var(--gw-border)" }}
                       >
                         {label}
                       </th>
@@ -3173,20 +3160,20 @@ function AdminShopDetail({ shop, onBack, onTierChanged }: AdminShopDetailProps) 
                     <tr
                       key={item.id}
                       style={{
-                        backgroundColor: idx % 2 === 0 ? "transparent" : "#211A15",
-                        borderBottom: "1px solid #2A2119",
+                        backgroundColor: idx % 2 === 0 ? "transparent" : "var(--gw-surface)",
+                        borderBottom: "1px solid var(--gw-border-faint)",
                       }}
                     >
-                      <td className="px-3 py-2" style={{ color: "#EDE3D3" }}>
+                      <td className="px-3 py-2" style={{ color: "var(--gw-text)" }}>
                         {item.name}
                       </td>
-                      <td className="px-3 py-2" style={{ color: "#9C8C79" }}>
+                      <td className="px-3 py-2" style={{ color: "var(--gw-text-2)" }}>
                         {CATEGORY_LABEL[item.category]}
                       </td>
-                      <td className="px-3 py-2" style={{ color: "#EDE3D3" }}>
+                      <td className="px-3 py-2" style={{ color: "var(--gw-text)" }}>
                         {item.count} {item.unit}
                       </td>
-                      <td className="px-3 py-2" style={{ color: "#9C8C79" }}>
+                      <td className="px-3 py-2" style={{ color: "var(--gw-text-2)" }}>
                         {item.threshold}
                       </td>
                     </tr>
@@ -3196,21 +3183,21 @@ function AdminShopDetail({ shop, onBack, onTierChanged }: AdminShopDetailProps) 
             </div>
           )}
 
-          <h3 className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: "#C1663B" }}>
+          <h3 className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: "var(--gw-accent-text)" }}>
             Recipes ({menuItems.length})
           </h3>
           {menuItems.length === 0 ? (
-            <p className="text-sm" style={{ color: "#9C8C79" }}>
+            <p className="text-sm" style={{ color: "var(--gw-text-2)" }}>
               No recipes.
             </p>
           ) : (
             <div className="flex flex-col gap-3">
               {menuItems.map((mi) => (
-                <div key={mi.id} className="rounded-lg border p-3" style={{ borderColor: "#3A2F27" }}>
-                  <div className="font-semibold mb-1" style={{ color: "#EDE3D3" }}>
+                <div key={mi.id} className="rounded-lg border p-3" style={{ borderColor: "var(--gw-border)" }}>
+                  <div className="font-semibold mb-1" style={{ color: "var(--gw-text)" }}>
                     {mi.name}
                   </div>
-                  <ul className="text-xs font-mono flex flex-col gap-0.5" style={{ color: "#9C8C79" }}>
+                  <ul className="text-xs font-mono flex flex-col gap-0.5" style={{ color: "var(--gw-text-2)" }}>
                     {mi.ingredients.map((ing) => {
                       const linkedItem = items.find((i) => i.id === ing.itemId);
                       return (
@@ -3267,17 +3254,17 @@ function AdminDashboard({ onLogout }: AdminDashboardProps) {
   }
 
   return (
-    <div className="min-h-screen w-full" style={{ backgroundColor: "#1B1512", fontFamily: "'Inter', sans-serif" }}>
+    <div className="min-h-screen w-full" style={{ backgroundColor: "var(--gw-bg)", fontFamily: "var(--font-sans)" }}>
       <div className="max-w-2xl md:max-w-4xl mx-auto px-5 py-10">
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>
-            <div className="font-mono text-xs uppercase tracking-[0.25em] mb-2" style={{ color: "#C1663B" }}>
+            <div className="font-mono text-xs uppercase tracking-[0.25em] mb-2" style={{ color: "var(--gw-accent-text)" }}>
               GroundWorks
             </div>
             <h1
               style={{
-                fontFamily: "'Barlow Condensed', sans-serif",
-                color: "#EDE3D3",
+                fontFamily: "var(--font-display)",
+                color: "var(--gw-text)",
                 fontSize: 40,
                 fontWeight: 700,
                 letterSpacing: "0.01em",
@@ -3286,14 +3273,14 @@ function AdminDashboard({ onLogout }: AdminDashboardProps) {
             >
               ADMIN
             </h1>
-            <p className="text-sm mt-2" style={{ color: "#9C8C79" }}>
+            <p className="text-sm mt-2" style={{ color: "var(--gw-text-2)" }}>
               {shops.length} shop{shops.length === 1 ? "" : "s"} signed up
             </p>
           </div>
           <button
             onClick={onLogout}
             className="font-mono text-xs mt-1 underline underline-offset-2"
-            style={{ color: "#9C8C79" }}
+            style={{ color: "var(--gw-text-2)" }}
           >
             Sign out
           </button>
@@ -3304,35 +3291,35 @@ function AdminDashboard({ onLogout }: AdminDashboardProps) {
         ) : (
           <>
             {loading && (
-              <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "#6E6153" }}>
+              <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--gw-text-3)" }}>
                 Loading shops…
               </div>
             )}
             {loadError && (
-              <div className="text-sm font-mono" style={{ color: "#B0492F" }}>
+              <div className="text-sm font-mono" style={{ color: "var(--gw-danger-text)" }}>
                 {loadError}
               </div>
             )}
             {!loading && !loadError && shops.length === 0 && (
-              <div className="text-sm" style={{ color: "#9C8C79" }}>
+              <div className="text-sm" style={{ color: "var(--gw-text-2)" }}>
                 No shops signed up yet.
               </div>
             )}
             {!loading && shops.length > 0 && (
-              <div className="rounded-lg border overflow-x-auto" style={{ borderColor: "#3A2F27" }}>
+              <div className="rounded-lg border overflow-x-auto" style={{ borderColor: "var(--gw-border)" }}>
                 <table className="w-full border-collapse font-mono text-sm">
                   <thead>
-                    <tr style={{ backgroundColor: "#241C17" }}>
+                    <tr style={{ backgroundColor: "var(--gw-surface-raised)" }}>
                       {["Shop", "Plan", "Signed up"].map((label) => (
                         <th
                           key={label}
                           className="text-left px-3 py-2.5 text-[11px] uppercase tracking-widest"
-                          style={{ color: "#9C8C79", borderBottom: "1px solid #3A2F27" }}
+                          style={{ color: "var(--gw-text-2)", borderBottom: "1px solid var(--gw-border)" }}
                         >
                           {label}
                         </th>
                       ))}
-                      <th style={{ borderBottom: "1px solid #3A2F27" }}></th>
+                      <th style={{ borderBottom: "1px solid var(--gw-border)" }}></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3340,24 +3327,24 @@ function AdminDashboard({ onLogout }: AdminDashboardProps) {
                       <tr
                         key={s.id}
                         style={{
-                          backgroundColor: idx % 2 === 0 ? "transparent" : "#211A15",
-                          borderBottom: "1px solid #2A2119",
+                          backgroundColor: idx % 2 === 0 ? "transparent" : "var(--gw-surface)",
+                          borderBottom: "1px solid var(--gw-border-faint)",
                         }}
                       >
-                        <td className="px-3 py-2.5" style={{ color: "#EDE3D3" }}>
+                        <td className="px-3 py-2.5" style={{ color: "var(--gw-text)" }}>
                           {s.name}
                         </td>
                         <td className="px-3 py-2.5" style={{ color: TIER_COLOR[s.tier] }}>
                           {TIER_LABEL[s.tier]}
                         </td>
-                        <td className="px-3 py-2.5" style={{ color: "#9C8C79" }}>
+                        <td className="px-3 py-2.5" style={{ color: "var(--gw-text-2)" }}>
                           {new Date(s.createdAt).toLocaleDateString()}
                         </td>
                         <td className="px-3 py-2.5 text-right">
                           <button
                             onClick={() => setSelectedShopId(s.id)}
                             className="text-xs px-2 py-1 rounded border"
-                            style={{ borderColor: "#3A2F27", color: "#9C8C79" }}
+                            style={{ borderColor: "var(--gw-border)", color: "var(--gw-text-2)" }}
                           >
                             View
                           </button>
@@ -3477,8 +3464,8 @@ export default function InventoryTracker() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center" style={{ backgroundColor: "#1B1512" }}>
-        <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "#6E6153" }}>
+      <div className="min-h-screen w-full flex items-center justify-center" style={{ backgroundColor: "var(--gw-bg)" }}>
+        <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--gw-text-3)" }}>
           Loading…
         </div>
       </div>

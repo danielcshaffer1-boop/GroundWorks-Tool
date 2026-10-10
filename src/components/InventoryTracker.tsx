@@ -40,7 +40,8 @@ import type {
   SaleLine,
 } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
-import { DEMO_SHOP_ID } from "@/lib/demo";
+import Link from "next/link";
+import { DEMO_SHOP_ID, DEMO_EMAIL, DEMO_PASSWORD } from "@/lib/demo";
 import {
   fetchItems,
   fetchMenuItems,
@@ -1678,8 +1679,8 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
 
 type AuthMode = "sign-in" | "sign-up" | "forgot-password";
 
-function LoginScreen() {
-  const [authMode, setAuthMode] = useState<AuthMode>("sign-in");
+function LoginScreen({ initialMode = "sign-in" }: { initialMode?: AuthMode }) {
+  const [authMode, setAuthMode] = useState<AuthMode>(initialMode);
   const [shopName, setShopName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -1783,8 +1784,8 @@ function LoginScreen() {
     const supabase = createClient();
     try {
       const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: "owner2@groundworktestshop.com",
-        password: "correct-horse-battery-2",
+        email: DEMO_EMAIL,
+        password: DEMO_PASSWORD,
       });
       if (signInError) {
         setError("Couldn't load the demo right now. Try again in a moment.");
@@ -1798,7 +1799,7 @@ function LoginScreen() {
 
   return (
     <div
-      className="min-h-screen w-full flex items-center justify-center px-5"
+      className="relative min-h-screen w-full flex items-center justify-center px-5"
       style={{ backgroundColor: "var(--gw-bg)", fontFamily: "var(--font-sans)" }}
     >
       <form
@@ -1954,6 +1955,13 @@ function LoginScreen() {
           </>
         )}
       </form>
+      <Link
+        href="/"
+        className="absolute top-5 left-5 inline-flex min-h-11 items-center font-mono text-xs"
+        style={{ color: "var(--gw-text-2)" }}
+      >
+        &larr; Back to home
+      </Link>
     </div>
   );
 }
@@ -3509,7 +3517,7 @@ function AdminDashboard({ onLogout }: AdminDashboardProps) {
 
 type AuthStatus = "loading" | "signedOut" | "signedIn";
 
-export default function InventoryTracker() {
+export default function InventoryTracker({ initialAuthMode = "sign-in" }: { initialAuthMode?: AuthMode }) {
   const supabase = useMemo(() => createClient(), []);
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [shop, setShop] = useState<ShopProfile | null>(null);
@@ -3517,6 +3525,14 @@ export default function InventoryTracker() {
 
   useEffect(() => {
     let cancelled = false;
+
+    // Signing in from /login or /signup happens client-side, so the URL would
+    // otherwise stay on the auth route while the dashboard is showing.
+    function leaveAuthRoute() {
+      if (typeof window === "undefined") return;
+      const { pathname } = window.location;
+      if (pathname === "/login" || pathname === "/signup") window.history.replaceState(null, "", "/");
+    }
 
     async function loadUser(userId: string) {
       // Admin identities (supabase/006_admin.sql) don't have a shops row
@@ -3527,6 +3543,7 @@ export default function InventoryTracker() {
       if (adminRow) {
         setIsAdmin(true);
         setShop(null);
+        leaveAuthRoute();
         setStatus("signedIn");
         return;
       }
@@ -3575,6 +3592,7 @@ export default function InventoryTracker() {
         displayMode: (data.display_mode as DisplayMode | null) ?? "count",
         expirationAlertDays: (data.expiration_alert_days as number | null) ?? 3,
       });
+      leaveAuthRoute();
       setStatus("signedIn");
     }
 
@@ -3626,7 +3644,7 @@ export default function InventoryTracker() {
   }
 
   if (status === "signedOut" || !shop) {
-    return <LoginScreen />;
+    return <LoginScreen initialMode={initialAuthMode} />;
   }
 
   if (shop.tier === "none") {

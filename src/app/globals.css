@@ -44,6 +44,22 @@
      app) resolves to the self-hosted Plex Mono instead of whatever monospace
      the visitor's OS happens to ship. */
   --font-mono: var(--font-plex-mono), ui-monospace, Menlo, Consolas, monospace;
+  --font-display: var(--font-barlow), "Barlow Condensed", sans-serif;
+
+  /* Token-named utilities (bg-gw-surface, text-gw-text-2, border-gw-border…)
+     so new pages don't need inline style objects. */
+  --color-gw-bg: var(--gw-bg);
+  --color-gw-surface: var(--gw-surface);
+  --color-gw-surface-raised: var(--gw-surface-raised);
+  --color-gw-surface-selected: var(--gw-surface-selected);
+  --color-gw-border: var(--gw-border);
+  --color-gw-border-strong: var(--gw-border-strong);
+  --color-gw-text: var(--gw-text);
+  --color-gw-text-2: var(--gw-text-2);
+  --color-gw-text-3: var(--gw-text-3);
+  --color-gw-accent: var(--gw-accent);
+  --color-gw-accent-text: var(--gw-accent-text);
+  --color-gw-ok: var(--gw-ok);
 }
 
 html {
@@ -128,5 +144,39 @@ button:not(:disabled):not([aria-expanded]):active,
   textarea,
   select {
     font-size: 16px;
+  }
+}
+
+/* ---- Landing page motion -----------------------------------------------------
+   Two jobs only: the hero settles in on load, and the content blocks ease up as
+   they scroll into view. Opacity + translate only, off the main thread, and
+   everything is skipped under prefers-reduced-motion. The scroll-driven reveal
+   is progressive enhancement: browsers without animation-timeline just show
+   the content. */
+@keyframes gw-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .gw-rise {
+    animation: gw-rise 700ms var(--ease-out) both;
+  }
+  .gw-rise-2 {
+    animation-delay: 120ms;
+  }
+
+  @supports (animation-timeline: view()) {
+    .gw-reveal {
+      animation: gw-rise linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 40%;
+    }
   }
 }

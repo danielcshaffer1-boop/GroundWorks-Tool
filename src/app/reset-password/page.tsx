@@ -105,7 +105,7 @@ export default function ResetPasswordPage() {
               This reset link is invalid or has expired. Request a new one from the sign-in screen.
             </p>
             <Link
-              href="/"
+              href="/login"
               className="block w-full text-center px-4 py-2.5 rounded-md text-sm font-mono font-semibold"
               style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
             >

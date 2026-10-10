@@ -26,8 +26,20 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://www.groundworksinventory.dev"),
   title: "GroundWorks Inventory",
   description: "Shift-ticket style back-of-house inventory tracker for coffee shops.",
+  openGraph: {
+    type: "website",
+    siteName: "GroundWorks Inventory",
+    title: "GroundWorks Inventory",
+    description: "Count your stock in under a minute. GroundWorks texts you before the shelf runs empty.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "GroundWorks Inventory",
+    description: "Count your stock in under a minute. GroundWorks texts you before the shelf runs empty.",
+  },
   // iOS home-screen name and a solid status bar that matches the app.
   appleWebApp: { capable: true, title: "GroundWorks", statusBarStyle: "black" },
 };

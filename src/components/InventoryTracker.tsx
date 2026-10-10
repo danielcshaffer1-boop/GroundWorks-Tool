@@ -41,6 +41,15 @@ import type {
 } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import {
+  parseSalesText,
+  matchRecipe,
+  computeDeductions,
+  fingerprintRows,
+  normalizeName,
+  type ParseResult,
+  type Match,
+} from "@/lib/sales-import";
 import { DEMO_SHOP_ID, DEMO_EMAIL, DEMO_PASSWORD } from "@/lib/demo";
 import {
   fetchItems,
@@ -1344,65 +1353,370 @@ function AddMenuItemForm({ items, menuItems, onAdd }: AddMenuItemFormProps) {
   );
 }
 
-interface EndOfShiftImportProps {
-  menuItems: MenuItem[];
-  onApply: (sales: SaleLine[]) => void;
+// Remembers (per shop, in this browser only) which POS item names the owner
+// has mapped to which recipe, and which reports were already applied.
+function readStore<T>(key: string, fallback: T): T {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function writeStore(key: string, value: unknown) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // private mode or storage full: mapping just isn't remembered
+  }
 }
 
-function EndOfShiftImport({ menuItems, onApply }: EndOfShiftImportProps) {
-  const [text, setText] = useState("");
-  const [result, setResult] = useState<{ applied: number; unmatched: string[] } | null>(null);
+interface EndOfShiftImportProps {
+  shopId: string;
+  items: InventoryItem[];
+  menuItems: MenuItem[];
+  onApply: (sales: SaleLine[]) => Promise<boolean>;
+}
 
-  function apply() {
-    const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
-    const sales: SaleLine[] = [];
-    const unmatched: string[] = [];
-    for (const line of lines) {
-      const [rawName, rawQty] = line.split(",");
-      if (!rawName || !rawQty) continue;
-      const qty = parseInt(rawQty.trim(), 10);
-      if (!qty) continue;
-      const match = menuItems.find((m) => m.name.toLowerCase() === rawName.trim().toLowerCase());
-      if (match) sales.push({ menuItem: match, qty });
-      else unmatched.push(rawName.trim());
+type ImportStage = "input" | "review" | "done";
+
+function EndOfShiftImport({ shopId, items, menuItems, onApply }: EndOfShiftImportProps) {
+  const aliasKey = `gw-sales-aliases-v1:${shopId}`;
+  const seenKey = `gw-sales-seen-v1:${shopId}`;
+
+  const [text, setText] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [stage, setStage] = useState<ImportStage>("input");
+  const [error, setError] = useState("");
+  const [parsed, setParsed] = useState<ParseResult | null>(null);
+  const [matches, setMatches] = useState<Record<string, Match>>({});
+  const [choices, setChoices] = useState<Record<string, number | "skip">>({});
+  const [seenAt, setSeenAt] = useState<number | null>(null);
+  const [applying, setApplying] = useState(false);
+  const [summary, setSummary] = useState<{ lines: number; sold: number; skipped: { name: string; qty: number }[] } | null>(null);
+
+  const recipes = menuItems.map((m) => ({ id: m.id, name: m.name }));
+
+  function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 2_000_000) {
+      setError("That file is too big to be a sales report.");
+      return;
     }
-    onApply(sales);
-    setResult({ applied: sales.length, unmatched });
-    setText("");
+    const reader = new FileReader();
+    reader.onload = () => {
+      setText(String(reader.result ?? ""));
+      setFileName(file.name);
+      setError("");
+    };
+    reader.onerror = () => setError("Couldn't read that file.");
+    reader.readAsText(file);
   }
+
+  function review() {
+    const result = parseSalesText(text);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    const aliases = readStore<Record<string, number>>(aliasKey, {});
+    const nextMatches: Record<string, Match> = {};
+    const nextChoices: Record<string, number | "skip"> = {};
+    for (const row of result.rows) {
+      const m = matchRecipe(row, recipes, aliases);
+      nextMatches[row.key] = m;
+      // A strong near-miss is pre-selected but shown as a choice to confirm; weaker ones start as Skip.
+      nextChoices[row.key] =
+        m.recipeId ?? (m.suggestionId !== null && m.suggestionScore >= 0.75 ? m.suggestionId : "skip");
+    }
+    const seen = readStore<Record<string, number>>(seenKey, {});
+    setSeenAt(seen[fingerprintRows(result.rows)] ?? null);
+    setParsed(result);
+    setMatches(nextMatches);
+    setChoices(nextChoices);
+    setError("");
+    setStage("review");
+  }
+
+  function reset() {
+    setText("");
+    setFileName("");
+    setParsed(null);
+    setSummary(null);
+    setError("");
+    setStage("input");
+  }
+
+  const rows = parsed?.rows ?? [];
+  const sales: SaleLine[] = [];
+  const skippedRows: { name: string; qty: number }[] = [];
+  for (const row of rows) {
+    const choice = choices[row.key];
+    const menuItem = typeof choice === "number" ? menuItems.find((m) => m.id === choice) : undefined;
+    if (menuItem) sales.push({ menuItem, qty: row.qty });
+    else skippedRows.push({ name: row.name, qty: row.qty });
+  }
+  const { byItem, skipped: undeductible } = computeDeductions(sales, items);
+  const changes = items
+    .filter((i) => byItem[i.id])
+    .map((i) => ({ item: i, used: byItem[i.id], after: Math.max(0, i.count - byItem[i.id]), short: byItem[i.id] > i.count + 1e-9 }));
+  const soldTotal = sales.reduce((n, l) => n + l.qty, 0);
+
+  async function apply() {
+    if (sales.length === 0 || changes.length === 0 || applying) return;
+    setApplying(true);
+    setError("");
+    const ok = await onApply(sales);
+    setApplying(false);
+    if (!ok) {
+      setError("Couldn't save the stock changes, so nothing was deducted. Try again.");
+      return;
+    }
+    const aliases = readStore<Record<string, number>>(aliasKey, {});
+    for (const row of rows) {
+      const choice = choices[row.key];
+      if (typeof choice === "number" && matches[row.key]?.kind === "none") aliases[normalizeName(row.name)] = choice;
+    }
+    writeStore(aliasKey, aliases);
+    const seen = readStore<Record<string, number>>(seenKey, {});
+    seen[fingerprintRows(rows)] = new Date().getTime();
+    writeStore(seenKey, seen);
+    setSummary({ lines: sales.length, sold: soldTotal, skipped: skippedRows });
+    setStage("done");
+    setText("");
+    setFileName("");
+  }
+
+  const labelCls = "font-mono text-xs uppercase tracking-widest";
+  const buttonPrimary = "px-4 py-2 min-h-11 rounded-md text-sm font-mono font-semibold disabled:opacity-40";
+  const buttonOutline = "px-4 py-2 min-h-11 rounded-md text-sm font-mono border";
 
   return (
     <div className="rounded-lg border p-4" style={{ borderColor: "var(--gw-border)" }}>
-      <div className="font-mono text-xs uppercase tracking-widest mb-2 flex items-center gap-1.5" style={{ color: "var(--gw-accent-text)" }}>
+      <div className={`${labelCls} mb-2 flex items-center gap-1.5`} style={{ color: "var(--gw-accent-text)" }}>
         <Upload size={13} /> End-of-Shift Import
       </div>
-      <p className="text-xs mb-3" style={{ color: "var(--gw-text-2)" }}>
-        Paste sales from your POS export, one line per menu item: <span className="font-mono">Menu Item, Qty Sold</span>
-      </p>
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder={"Vanilla Latte, 24\nOat Milk Latte, 17"}
-        rows={4}
-        className="w-full rounded-md border px-3 py-2 text-sm font-mono bg-transparent focus:outline-none mb-3"
-        style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
-      />
-      <button
-        onClick={apply}
-        disabled={!text.trim()}
-        className="px-4 py-2 rounded-md text-sm font-mono font-semibold disabled:opacity-40"
-        style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
-      >
-        Apply Sales & Deduct Stock
-      </button>
-      {result && (
-        <div className="mt-3 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
-          <div style={{ color: "var(--gw-ok)" }}>✓ Deducted stock for {result.applied} menu item line(s).</div>
-          {result.unmatched.length > 0 && (
-            <div style={{ color: "var(--gw-warn)" }} className="mt-1">
-              Didn&apos;t recognize: {result.unmatched.join(", ")} — check spelling matches your menu items exactly.
+
+      {stage === "input" && (
+        <>
+          <p className="text-sm mb-3" style={{ color: "var(--gw-text-2)" }}>
+            Upload your POS item-sales report (CSV), or paste it. GroundWorks looks for the item name and quantity
+            columns itself, so extra columns are fine. Simple lines like{" "}
+            <span className="font-mono">Vanilla Latte, 24</span> work too. You&apos;ll review everything before any stock
+            changes.
+          </p>
+          <div className="flex flex-wrap items-center gap-3 mb-3">
+            <label
+              className={`${buttonOutline} inline-flex items-center gap-2 cursor-pointer has-[:focus-visible]:outline-2 has-[:focus-visible]:outline`}
+              style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
+            >
+              <Upload size={14} /> Choose a CSV file
+              <input type="file" accept=".csv,.tsv,.txt,text/csv,text/plain" onChange={onFile} className="sr-only" />
+            </label>
+            {fileName && (
+              <span className="text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
+                {fileName} loaded
+              </span>
+            )}
+          </div>
+          <textarea
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value);
+              setFileName("");
+              if (error) setError("");
+            }}
+            aria-label="Sales report"
+            placeholder={"Item Name, Items Sold\nVanilla Latte, 24\nOat Milk Latte, 17"}
+            rows={5}
+            className="w-full rounded-md border px-3 py-2 text-sm font-mono bg-transparent focus:outline-none mb-3"
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
+          />
+          <button
+            onClick={review}
+            disabled={!text.trim()}
+            className={buttonPrimary}
+            style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
+          >
+            Review import
+          </button>
+          {error && (
+            <p role="alert" className="mt-3 text-sm" style={{ color: "var(--gw-danger-text)" }}>
+              {error}
+            </p>
+          )}
+        </>
+      )}
+
+      {stage === "review" && parsed && (
+        <div>
+          <p className="text-sm mb-3" style={{ color: "var(--gw-text-2)" }}>
+            Found <strong style={{ color: "var(--gw-text)" }}>{rows.length}</strong> item{rows.length === 1 ? "" : "s"} in
+            your report. Nothing changes until you press Apply.
+          </p>
+
+          {seenAt && (
+            <div
+              role="alert"
+              className="rounded-md border px-3 py-2 mb-3 text-sm"
+              style={{ borderColor: "var(--gw-warn)", color: "var(--gw-text)" }}
+            >
+              You already applied this exact report on {new Date(seenAt).toLocaleString()}. Applying it again will
+              deduct everything a second time.
             </div>
           )}
+          {parsed.notes.map((n) => (
+            <p key={n} className="text-xs mb-1" style={{ color: "var(--gw-text-3)" }}>
+              {n}
+            </p>
+          ))}
+
+          <div className={`${labelCls} mt-4 mb-2`} style={{ color: "var(--gw-text-3)" }}>
+            Sales in this report
+          </div>
+          <ul className="mb-4">
+            {rows.map((row) => {
+              const m = matches[row.key];
+              const choice = choices[row.key];
+              const label = row.variation ? `${row.name} (${row.variation})` : row.name;
+              const exact = m?.kind === "exact";
+              const matchedName =
+                typeof choice === "number" ? menuItems.find((mi) => mi.id === choice)?.name : undefined;
+              return (
+                <li
+                  key={row.key}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 border-b"
+                  style={{ borderColor: "var(--gw-border)" }}
+                >
+                  <span className="font-mono text-sm w-12 text-right" style={{ color: "var(--gw-text)" }}>
+                    {trimNumber(row.qty)}
+                  </span>
+                  <span className="text-sm flex-1 min-w-[8rem]" style={{ color: "var(--gw-text)" }}>
+                    {label}
+                  </span>
+                  {exact ? (
+                    <span className="text-xs font-mono" style={{ color: "var(--gw-ok)" }}>
+                      ✓ {matchedName}
+                    </span>
+                  ) : (
+                    <label className="flex items-center gap-2 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
+                      {m?.kind === "cleaned" || m?.kind === "alias" ? "Matched to" : "Count as"}
+                      <select
+                        value={choice === undefined ? "skip" : String(choice)}
+                        onChange={(e) =>
+                          setChoices((prev) => ({
+                            ...prev,
+                            [row.key]: e.target.value === "skip" ? "skip" : parseInt(e.target.value, 10),
+                          }))
+                        }
+                        className="rounded-md border px-2 py-1.5 min-h-11 bg-transparent focus:outline-none"
+                        style={{
+                          borderColor: choice === "skip" ? "var(--gw-warn)" : "var(--gw-border-strong)",
+                          color: "var(--gw-text)",
+                        }}
+                      >
+                        <option value="skip" style={{ color: "#000" }}>
+                          Skip (no recipe)
+                        </option>
+                        {menuItems.map((mi) => (
+                          <option key={mi.id} value={mi.id} style={{ color: "#000" }}>
+                            {mi.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+
+          <div className={`${labelCls} mb-2`} style={{ color: "var(--gw-text-3)" }}>
+            What will change in your inventory
+          </div>
+          {changes.length === 0 ? (
+            <p className="text-sm mb-4" style={{ color: "var(--gw-text-2)" }}>
+              Nothing yet. Choose a recipe for at least one line above.
+            </p>
+          ) : (
+            <ul className="mb-4">
+              {changes.map(({ item, used, after, short }) => (
+                <li key={item.id} className="flex flex-wrap items-baseline gap-x-3 py-1 text-sm">
+                  <span className="flex-1 min-w-[8rem]" style={{ color: "var(--gw-text)" }}>
+                    {item.name}
+                  </span>
+                  <span className="font-mono text-xs" style={{ color: "var(--gw-text-2)" }}>
+                    −{trimNumber(used)} {item.unit} ({trimNumber(item.count)} → {trimNumber(after)})
+                  </span>
+                  {short && (
+                    <span className="w-full text-xs" style={{ color: "var(--gw-warn)" }}>
+                      Not enough on hand for these sales; the count will stop at 0.
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {undeductible.length > 0 && (
+            <p className="text-xs mb-4" style={{ color: "var(--gw-warn)" }}>
+              Not deducted (no amount per unit set): {[...new Set(undeductible.map((u) => u.item))].join(", ")}.
+            </p>
+          )}
+          {skippedRows.length > 0 && (
+            <p className="text-xs mb-4" style={{ color: "var(--gw-text-3)" }}>
+              Skipping {skippedRows.length} line{skippedRows.length === 1 ? "" : "s"} with no recipe:{" "}
+              {skippedRows.map((r) => r.name).join(", ")}.
+            </p>
+          )}
+
+          {error && (
+            <p role="alert" className="mb-3 text-sm" style={{ color: "var(--gw-danger-text)" }}>
+              {error}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={apply}
+              disabled={sales.length === 0 || changes.length === 0 || applying}
+              className={buttonPrimary}
+              style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
+            >
+              {applying ? "Applying…" : `Apply and deduct stock`}
+            </button>
+            <button
+              onClick={() => {
+                setError("");
+                setStage("input");
+              }}
+              className={buttonOutline}
+              style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text-2)" }}
+            >
+              Back
+            </button>
+          </div>
+        </div>
+      )}
+
+      {stage === "done" && summary && (
+        <div role="status">
+          <p className="text-sm mb-2" style={{ color: "var(--gw-ok)" }}>
+            Done. Deducted stock for {trimNumber(summary.sold)} sale{summary.sold === 1 ? "" : "s"} across{" "}
+            {summary.lines} recipe line{summary.lines === 1 ? "" : "s"}.
+          </p>
+          {summary.skipped.length > 0 && (
+            <p className="text-xs mb-3" style={{ color: "var(--gw-text-3)" }}>
+              Skipped (no recipe): {summary.skipped.map((r) => `${r.name} (${trimNumber(r.qty)})`).join(", ")}.
+            </p>
+          )}
+          <button
+            onClick={reset}
+            className={buttonOutline}
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text-2)" }}
+          >
+            Import another report
+          </button>
         </div>
       )}
     </div>
@@ -1410,6 +1724,7 @@ function EndOfShiftImport({ menuItems, onApply }: EndOfShiftImportProps) {
 }
 
 interface RecipesPageProps {
+  shopId: string;
   items: InventoryItem[];
   menuItems: MenuItem[];
   onAddMenuItem: (name: string, firstIngredient: { itemId: number; amount: number }) => void;
@@ -1418,10 +1733,11 @@ interface RecipesPageProps {
   onChangeIngredientAmount: (ingredientId: number, amount: number) => void;
   onChangeIngredientItem: (ingredientId: number, itemId: number) => void;
   onRemoveIngredient: (ingredientId: number) => void;
-  onApplySales: (sales: SaleLine[]) => void;
+  onApplySales: (sales: SaleLine[]) => Promise<boolean>;
 }
 
 function RecipesPage({
+  shopId,
   items,
   menuItems,
   onAddMenuItem,
@@ -1458,7 +1774,9 @@ function RecipesPage({
           onDelete={() => onDeleteMenuItem(mi.id)}
         />
       ))}
-      {menuItems.length > 0 && <EndOfShiftImport menuItems={menuItems} onApply={onApplySales} />}
+      {menuItems.length > 0 && (
+        <EndOfShiftImport shopId={shopId} items={items} menuItems={menuItems} onApply={onApplySales} />
+      )}
     </div>
   );
 }
@@ -2615,25 +2933,19 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
     }
   }
 
-  async function applySales(sales: SaleLine[]) {
+  async function applySales(sales: SaleLine[]): Promise<boolean> {
     // sales: [{ menuItem, qty }] — deduct each ingredient's amount * qty, converted
     // from the recipe's measure into the item's stocking unit, from on-hand count.
-    const deltaByItemId: Record<number, number> = {};
-    for (const { menuItem, qty } of sales) {
-      for (const ing of menuItem.ingredients) {
-        const item = items.find((i) => i.id === ing.itemId);
-        if (!item || !item.unitSize) continue;
-        const stockingUnitsUsed = (ing.amount * qty) / item.unitSize;
-        deltaByItemId[ing.itemId] = (deltaByItemId[ing.itemId] || 0) + stockingUnitsUsed;
-      }
-    }
+    // The same computeDeductions() powers the import preview, so what the owner
+    // reviewed is exactly what gets applied. Returns whether the save succeeded.
+    const { byItem: deltaByItemId } = computeDeductions(sales, items);
     const updates = items
       .filter((i) => deltaByItemId[i.id])
       .map((i) => ({
         id: i.id,
         count: Math.max(0, Math.round((i.count - deltaByItemId[i.id]) * 100) / 100),
       }));
-    if (updates.length === 0) return;
+    if (updates.length === 0) return false;
 
     setActionError("");
     setItems((prev) => {
@@ -2644,7 +2956,14 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
       await withSaving(() => updateItemCounts(updates));
     } catch {
       setActionError("Couldn't save the sales deduction. Try again.");
-      return;
+      // Put the on-screen counts back; nothing was written.
+      setItems((prev) =>
+        prev.map((i) => {
+          const before = items.find((o) => o.id === i.id);
+          return before && updates.some((u) => u.id === i.id) ? { ...i, count: before.count } : i;
+        })
+      );
+      return false;
     }
     // Sales always deduct (never add), so every update here is a decrease
     // — trim the oldest-expiring batch(es) for each affected item to match.
@@ -2654,6 +2973,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
     } catch {
       // best-effort — see refreshBatches
     }
+    return true;
   }
 
   if (loading) {
@@ -3023,6 +3343,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
 
         {page === "recipes" && tier === "pro" && (
           <RecipesPage
+            shopId={shop.id}
             items={items}
             menuItems={menuItems}
             onAddMenuItem={addMenuItem}

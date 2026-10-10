@@ -109,10 +109,12 @@ export function buildAuthorizeUrl(state: string, redirectUri: string): string {
   const params = new URLSearchParams({
     client_id: appId,
     scope: SCOPES.join(" "),
-    session: "false",
     state,
     redirect_uri: redirectUri,
   });
+  // session=false makes Square ask the seller to log in every time (right for a
+  // shared computer); Square's sandbox does not support it.
+  if (process.env.SQUARE_ENVIRONMENT === "production") params.set("session", "false");
   return `${squareBase()}/oauth2/authorize?${params}`;
 }
 

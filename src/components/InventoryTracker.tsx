@@ -1050,6 +1050,17 @@ function SpreadsheetView({ items, displayMode, onEdit }: SpreadsheetViewProps) {
   ];
   const phoneHidden = "hidden sm:table-cell";
 
+  if (items.length === 0) {
+    return (
+      <div
+        className="rounded-lg border px-4 py-6 text-center text-sm"
+        style={{ borderColor: "var(--gw-border)", color: "var(--gw-text-2)" }}
+      >
+        No items yet. Add one from the Update tab and it will show up here.
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-lg border overflow-x-auto" style={{ borderColor: "var(--gw-border)" }}>
       <table className="w-full border-collapse font-mono text-[13px] sm:text-sm">
@@ -1947,6 +1958,147 @@ function LoginScreen() {
   );
 }
 
+// ---- Loading skeleton + first-run empty state --------------------------------
+
+// The dashboard's own frame (wordmark, shop name, tab bar, tiles, rows) in
+// placeholder form, so the page appears in place immediately and fills in
+// rather than swapping a blank "Loading…" screen for the real layout. Pulse
+// is opacity-only and gated behind motion-safe.
+function SkeletonBar({ className = "" }: { className?: string }) {
+  return (
+    <div
+      className={`rounded motion-safe:animate-pulse ${className}`}
+      style={{ backgroundColor: "var(--gw-surface-selected)" }}
+    />
+  );
+}
+
+function DashboardSkeleton({ shopName }: { shopName: string }) {
+  return (
+    <div
+      className="min-h-screen w-full"
+      style={{ backgroundColor: "var(--gw-bg)", fontFamily: "var(--font-sans)" }}
+      role="status"
+      aria-busy="true"
+    >
+      <span className="sr-only">Loading your shop</span>
+      <div className="max-w-2xl md:max-w-4xl mx-auto px-5 py-10">
+        <div className="mb-8">
+          <h1
+            style={{
+              fontFamily: "var(--font-display)",
+              color: "var(--gw-text)",
+              fontSize: 40,
+              fontWeight: 700,
+              letterSpacing: "0.01em",
+              lineHeight: 1,
+            }}
+          >
+            GROUNDWORKS
+          </h1>
+          <p className="text-sm mt-2" style={{ color: "var(--gw-text-2)" }}>
+            {shopName}
+          </p>
+        </div>
+        <SkeletonBar className="h-[60px] w-full sm:w-[420px] mb-6" />
+        <div className="grid grid-cols-3 gap-3 mb-8">
+          {[0, 1, 2].map((i) => (
+            <SkeletonBar key={i} className="h-[84px]" />
+          ))}
+        </div>
+        <div className="md:grid md:grid-cols-2 md:gap-x-12">
+          {[0, 1].map((col) => (
+            <div key={col} className="mb-8">
+              <SkeletonBar className="h-4 w-32 mb-4" />
+              {[0, 1].map((row) => (
+                <div
+                  key={row}
+                  className="flex flex-col gap-3 py-4 border-b"
+                  style={{ borderColor: "var(--gw-border)" }}
+                >
+                  <div className="flex items-center gap-3">
+                    <SkeletonBar className="shrink-0 rounded-full w-12 h-12 sm:w-16 sm:h-16" />
+                    <div className="flex-1 space-y-2">
+                      <SkeletonBar className="h-5 w-40 max-w-full" />
+                      <SkeletonBar className="h-3 w-56 max-w-full" />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <SkeletonBar className="h-11 w-11 rounded-full" />
+                    <SkeletonBar className="h-6 w-14" />
+                    <SkeletonBar className="h-11 w-11 rounded-full" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// What a brand-new shop sees right after paying: where to start, in plain
+// words, with the one action it needs and a pointer to the next useful setup
+// step (text alerts), instead of a single gray line.
+function EmptyInventory({ onAdd, onAlerts }: { onAdd: () => void; onAlerts: () => void }) {
+  return (
+    <div
+      className="rounded-lg border px-5 py-8 mb-8 text-center"
+      style={{ borderColor: "var(--gw-border)", backgroundColor: "var(--gw-surface)" }}
+    >
+      <Package size={28} className="mx-auto mb-3" style={{ color: "var(--gw-border-strong)" }} />
+      <h2
+        style={{
+          fontFamily: "var(--font-display)",
+          color: "var(--gw-text)",
+          fontSize: 26,
+          fontWeight: 700,
+          letterSpacing: "0.01em",
+          lineHeight: 1.1,
+        }}
+      >
+        Add your first item
+      </h2>
+      <p className="text-sm mt-2 mb-5 max-w-sm mx-auto" style={{ color: "var(--gw-text-2)" }}>
+        Track what&apos;s on hand and GroundWorks texts you before it runs out.
+      </p>
+      <ul
+        className="text-left text-sm max-w-sm mx-auto mb-6 space-y-2 list-disc pl-5"
+        style={{ color: "var(--gw-text-2)" }}
+      >
+        <li>
+          <span style={{ color: "var(--gw-text)" }}>Name it and pick a category.</span> Milk goes under Perishables.
+        </li>
+        <li>
+          <span style={{ color: "var(--gw-text)" }}>Set a reorder threshold.</span> That&apos;s the count where you
+          want the heads-up.
+        </li>
+        <li>
+          <span style={{ color: "var(--gw-text)" }}>Optional: amount per unit.</span> 1 carton = 32 oz lets Recipes
+          use the item.
+        </li>
+      </ul>
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2">
+        <button
+          onClick={onAdd}
+          className="px-5 py-2 min-h-11 rounded-full text-sm font-mono font-semibold"
+          style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
+        >
+          + Add your first item
+        </button>
+        <button
+          onClick={onAlerts}
+          className="px-5 py-2 min-h-11 rounded-full text-sm font-mono underline underline-offset-2"
+          style={{ color: "var(--gw-text-2)" }}
+        >
+          Set up text alerts
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ---- Shop dashboard ---------------------------------------------------------
 
 interface ShopDashboardProps {
@@ -2485,13 +2637,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen w-full flex items-center justify-center" style={{ backgroundColor: "var(--gw-bg)" }}>
-        <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--gw-text-3)" }}>
-          Loading your shop…
-        </div>
-      </div>
-    );
+    return <DashboardSkeleton shopName={shopName} />;
   }
 
   if (loadError) {
@@ -2637,7 +2783,8 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
 
         {page === "update" && (
         <>
-        {/* Status summary strip — only on Update; the other tabs don't use it */}
+        {/* Status summary strip — only on Update, and only once there are items to count */}
+        {items.length > 0 && (
         <div className="grid grid-cols-3 gap-3 mb-8">
           {(["critical", "low", "good"] as Status[]).map((s) => (
             <div
@@ -2654,6 +2801,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
             </div>
           ))}
         </div>
+        )}
 
         {/* Mode switcher: two equal segments, and "New item" as its own deliberate row on a phone */}
         <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 mb-6">
@@ -2757,13 +2905,8 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
           </div>
         )}
 
-        {items.length === 0 && (
-          <div
-            className="rounded-lg border px-4 py-6 mb-8 text-center text-sm"
-            style={{ borderColor: "var(--gw-border)", color: "var(--gw-text-2)" }}
-          >
-            No inventory yet — add your first item above to get started.
-          </div>
+        {items.length === 0 && !showAdd && (
+          <EmptyInventory onAdd={() => setShowAdd(true)} onAlerts={() => setPage("alerts")} />
         )}
 
         {/* Category sections */}

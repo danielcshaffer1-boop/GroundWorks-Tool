@@ -28,6 +28,8 @@ const plexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "GroundWorks Inventory",
   description: "Shift-ticket style back-of-house inventory tracker for coffee shops.",
+  // iOS home-screen name and a solid status bar that matches the app.
+  appleWebApp: { capable: true, title: "GroundWorks", statusBarStyle: "black" },
 };
 
 // Matches the page background so the phone's status bar / browser chrome

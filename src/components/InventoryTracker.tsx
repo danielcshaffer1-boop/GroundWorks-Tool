@@ -1276,6 +1276,12 @@ function MenuItemCard({
         />
       ))}
 
+      {menuItem.ingredients.length === 0 && (
+        <p className="text-xs py-1.5" style={{ color: "var(--gw-text-2)" }}>
+          No ingredients yet. Add what goes into one serving, then set how much of each.
+        </p>
+      )}
+
       <button
         onClick={addIngredient}
         disabled={linkableItems.length === 0}
@@ -1295,19 +1301,17 @@ function MenuItemCard({
 }
 
 interface AddMenuItemFormProps {
-  items: InventoryItem[];
   menuItems: MenuItem[];
-  onAdd: (name: string, firstIngredient: { itemId: number; amount: number }) => void;
+  onAdd: (name: string) => void;
 }
 
-function AddMenuItemForm({ items, menuItems, onAdd }: AddMenuItemFormProps) {
+function AddMenuItemForm({ menuItems, onAdd }: AddMenuItemFormProps) {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
-  const linkableItems = items.filter((i) => i.unitSize);
 
   function submit() {
     const trimmed = name.trim();
-    if (!trimmed || linkableItems.length === 0) return;
+    if (!trimmed) return;
     // Case-insensitive so "Vanilla Latte" and "vanilla latte" collide too —
     // the unique index on menu_items(shop_id, lower(name)) backs this up
     // server-side for the concurrent-tab race this check can't catch.
@@ -1317,7 +1321,7 @@ function AddMenuItemForm({ items, menuItems, onAdd }: AddMenuItemFormProps) {
       return;
     }
     setError("");
-    onAdd(trimmed, { itemId: linkableItems[0].id, amount: 1 });
+    onAdd(trimmed);
     setName("");
   }
 
@@ -1337,8 +1341,7 @@ function AddMenuItemForm({ items, menuItems, onAdd }: AddMenuItemFormProps) {
         />
         <button
           onClick={submit}
-          disabled={linkableItems.length === 0}
-          className="px-4 py-2 rounded-md text-sm font-mono font-semibold flex items-center gap-1.5 disabled:opacity-40"
+          className="px-4 py-2 rounded-md text-sm font-mono font-semibold flex items-center gap-1.5"
           style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
         >
           <Plus size={14} /> Add
@@ -1727,7 +1730,7 @@ interface RecipesPageProps {
   shopId: string;
   items: InventoryItem[];
   menuItems: MenuItem[];
-  onAddMenuItem: (name: string, firstIngredient: { itemId: number; amount: number }) => void;
+  onAddMenuItem: (name: string) => void;
   onDeleteMenuItem: (id: number) => void;
   onAddIngredient: (menuItemId: number, itemId: number) => void;
   onChangeIngredientAmount: (ingredientId: number, amount: number) => void;
@@ -1761,7 +1764,7 @@ function RecipesPage({
           one) with something like 32 oz per carton before you can build a recipe.
         </div>
       )}
-      <AddMenuItemForm items={items} menuItems={menuItems} onAdd={onAddMenuItem} />
+      <AddMenuItemForm menuItems={menuItems} onAdd={onAddMenuItem} />
       {menuItems.map((mi) => (
         <MenuItemCard
           key={mi.id}
@@ -2844,10 +2847,10 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
     }
   }
 
-  async function addMenuItem(name: string, firstIngredient: { itemId: number; amount: number }) {
+  async function addMenuItem(name: string) {
     setActionError("");
     try {
-      const inserted = await withSaving(() => insertMenuItem(shop.id, name, firstIngredient));
+      const inserted = await withSaving(() => insertMenuItem(shop.id, name));
       setMenuItems((prev) => [...prev, inserted]);
     } catch (err) {
       // 23505 = unique_violation — the menu_items(shop_id, lower(name))

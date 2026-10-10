@@ -182,11 +182,7 @@ export async function fetchMenuItems(shopId: string): Promise<MenuItem[]> {
   return (data as unknown as MenuItemRow[]).map(fromMenuItemRow);
 }
 
-export async function insertMenuItem(
-  shopId: string,
-  name: string,
-  firstIngredient: { itemId: number; amount: number }
-): Promise<MenuItem> {
+export async function insertMenuItem(shopId: string, name: string): Promise<MenuItem> {
   const supabase = createClient();
   const { data: menuItemRow, error: menuItemError } = await supabase
     .from("menu_items")
@@ -195,22 +191,7 @@ export async function insertMenuItem(
     .single();
   if (menuItemError) throw menuItemError;
 
-  const { data: ingredientRow, error: ingredientError } = await supabase
-    .from("ingredients")
-    .insert({
-      menu_item_id: menuItemRow.id,
-      item_id: firstIngredient.itemId,
-      amount: firstIngredient.amount,
-    })
-    .select("id, item_id, amount")
-    .single();
-  if (ingredientError) throw ingredientError;
-
-  return {
-    id: menuItemRow.id,
-    name: menuItemRow.name,
-    ingredients: [{ id: ingredientRow.id, itemId: ingredientRow.item_id, amount: ingredientRow.amount }],
-  };
+  return { id: menuItemRow.id, name: menuItemRow.name, ingredients: [] };
 }
 
 export async function deleteMenuItemRow(id: number): Promise<void> {

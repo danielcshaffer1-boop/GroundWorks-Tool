@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { DEMO_SHOP_ID } from "@/lib/demo";
 import { getTwilioAccountSid, getTwilioAuthToken, getTwilioPhoneNumber, sendSms } from "@/lib/twilio";
 
 // Invoked once a day by Vercel Cron (see vercel.json) rather than firing
@@ -66,6 +67,8 @@ export async function GET(request: Request) {
     if (daysUntil(row.expires_on) > leadDays) continue;
 
     const shopId = row.items.shop_id;
+    // See item-updated: the shared demo shop never sends texts.
+    if (shopId === DEMO_SHOP_ID) continue;
     const list = dueByShop.get(shopId) ?? [];
     list.push({
       batchId: row.id,

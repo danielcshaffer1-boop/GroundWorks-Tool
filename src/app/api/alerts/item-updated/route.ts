@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getTwilioAccountSid, getTwilioAuthToken, getTwilioPhoneNumber } from "@/lib/twilio";
+import { DEMO_SHOP_ID } from "@/lib/demo";
 import type { Status } from "@/lib/types";
 
 // Called by a Supabase Database Webhook (Database -> Webhooks in the
@@ -50,6 +51,12 @@ export async function POST(request: Request) {
 
   if (type !== "UPDATE" || !record || !old_record) {
     return NextResponse.json({ ok: true, skipped: "not an item update" });
+  }
+
+  // The public demo is shared by every visitor and anyone can type a phone
+  // number into its Alerts tab, so it must never send a real text.
+  if (record.shop_id === DEMO_SHOP_ID) {
+    return NextResponse.json({ ok: true, skipped: "demo shop never sends texts" });
   }
 
   const oldStatus = getStatus(old_record.count, old_record.threshold);

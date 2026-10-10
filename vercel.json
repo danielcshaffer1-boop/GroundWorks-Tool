@@ -3,6 +3,10 @@
     {
       "path": "/api/alerts/expiring-batches",
       "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/demo/reset",
+      "schedule": "0 9 * * *"
     }
   ]
 }

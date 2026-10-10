@@ -1472,11 +1472,12 @@ const PHONE_PATTERN = /^\+[1-9]\d{6,14}$/;
 
 interface AlertsPageProps {
   shopId: string;
+  isDemoShop?: boolean;
   expirationAlertDays: number;
   onChangeExpirationAlertDays: (days: number) => void;
 }
 
-function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }: AlertsPageProps) {
+function AlertsPage({ shopId, isDemoShop = false, expirationAlertDays, onChangeExpirationAlertDays }: AlertsPageProps) {
   const [recipients, setRecipients] = useState<AlertRecipient[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -1569,24 +1570,34 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
         Sent to
       </p>
 
-      {loading && (
+      {isDemoShop && (
+        <div
+          className="rounded-lg border p-4 mb-4 text-sm"
+          style={{ borderColor: "var(--gw-border)", color: "var(--gw-text-2)" }}
+        >
+          Text alerts are turned off in the demo. In your own shop you add the numbers that should get a text here.
+        </div>
+      )}
+
+      {loading && !isDemoShop && (
         <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--gw-text-3)" }}>
           Loading…
         </div>
       )}
-      {loadError && (
+      {loadError && !isDemoShop && (
         <div className="text-sm font-mono" style={{ color: "var(--gw-danger-text)" }}>
           {loadError}
         </div>
       )}
 
-      {!loading && !loadError && (
+      {(isDemoShop || (!loading && !loadError)) && (
         <>
           <div className="rounded-lg border p-4 mb-4" style={{ borderColor: "var(--gw-border)" }}>
             <label className="flex flex-col gap-1 text-xs font-mono mb-3" style={{ color: "var(--gw-text-2)" }}>
               Phone number
               <input
                 type="tel"
+                disabled={isDemoShop}
                 placeholder="+15551234567"
                 value={newPhone}
                 onChange={(e) => setNewPhone(e.target.value)}
@@ -1598,6 +1609,7 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
             <label className="flex items-start gap-2 text-xs mb-4 cursor-pointer" style={{ color: "var(--gw-text-2)" }}>
               <input
                 type="checkbox"
+                disabled={isDemoShop}
                 checked={consentChecked}
                 onChange={(e) => setConsentChecked(e.target.checked)}
                 className="mt-0.5 shrink-0"
@@ -1633,7 +1645,7 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
 
             <button
               onClick={handleAdd}
-              disabled={adding || !newPhone.trim() || !consentChecked}
+              disabled={isDemoShop || adding || !newPhone.trim() || !consentChecked}
               className="px-4 py-2 rounded-md text-sm font-mono font-semibold flex items-center gap-1.5 disabled:opacity-40"
               style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
             >
@@ -1647,7 +1659,7 @@ function AlertsPage({ shopId, expirationAlertDays, onChangeExpirationAlertDays }
             </div>
           )}
 
-          {recipients.length === 0 ? (
+          {isDemoShop ? null : recipients.length === 0 ? (
             <p className="text-sm" style={{ color: "var(--gw-text-2)" }}>
               No recipients yet — add a phone number above to start getting restock texts.
             </p>
@@ -3026,6 +3038,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
         {page === "alerts" && (
           <AlertsPage
             shopId={shop.id}
+            isDemoShop={isDemoShop}
             expirationAlertDays={expirationAlertDays}
             onChangeExpirationAlertDays={changeExpirationAlertDays}
           />

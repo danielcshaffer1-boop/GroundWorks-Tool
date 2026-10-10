@@ -48,6 +48,7 @@ import {
   fingerprintRows,
   normalizeName,
   type ParseResult,
+  type ColumnChoice,
   type Match,
 } from "@/lib/sales-import";
 import { DEMO_SHOP_ID, DEMO_EMAIL, DEMO_PASSWORD } from "@/lib/demo";
@@ -1391,6 +1392,10 @@ function EndOfShiftImport({ shopId, items, menuItems, onApply }: EndOfShiftImpor
   const [fileName, setFileName] = useState("");
   const [stage, setStage] = useState<ImportStage>("input");
   const [error, setError] = useState("");
+  // Set when the file's column names weren't recognized: the owner picks them.
+  const [pickColumns, setPickColumns] = useState<string[] | null>(null);
+  const [pickName, setPickName] = useState(0);
+  const [pickQty, setPickQty] = useState(1);
   const [parsed, setParsed] = useState<ParseResult | null>(null);
   const [matches, setMatches] = useState<Record<string, Match>>({});
   const [choices, setChoices] = useState<Record<string, number | "skip">>({});
@@ -1418,12 +1423,20 @@ function EndOfShiftImport({ shopId, items, menuItems, onApply }: EndOfShiftImpor
     reader.readAsText(file);
   }
 
-  function review() {
-    const result = parseSalesText(text);
+  function review(choice?: ColumnChoice) {
+    const result = parseSalesText(text, choice);
     if (result.error) {
       setError(result.error);
+      if (result.columns) {
+        const qtyGuess = result.columns.findIndex((c) => /qty|quant|sold|count|units|out/i.test(c));
+        const q = qtyGuess >= 0 ? qtyGuess : Math.min(1, result.columns.length - 1);
+        setPickQty(q);
+        setPickName(q === 0 ? 1 : 0);
+      }
+      setPickColumns(result.columns ?? null);
       return;
     }
+    setPickColumns(null);
     const aliases = readStore<Record<string, number>>(aliasKey, {});
     const nextMatches: Record<string, Match> = {};
     const nextChoices: Record<string, number | "skip"> = {};
@@ -1448,6 +1461,7 @@ function EndOfShiftImport({ shopId, items, menuItems, onApply }: EndOfShiftImpor
     setFileName("");
     setParsed(null);
     setSummary(null);
+    setPickColumns(null);
     setError("");
     setStage("input");
   }
@@ -1529,6 +1543,7 @@ function EndOfShiftImport({ shopId, items, menuItems, onApply }: EndOfShiftImpor
             onChange={(e) => {
               setText(e.target.value);
               setFileName("");
+              setPickColumns(null);
               if (error) setError("");
             }}
             aria-label="Sales report"
@@ -1538,7 +1553,7 @@ function EndOfShiftImport({ shopId, items, menuItems, onApply }: EndOfShiftImpor
             style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
           />
           <button
-            onClick={review}
+            onClick={() => review()}
             disabled={!text.trim()}
             className={buttonPrimary}
             style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
@@ -1549,6 +1564,40 @@ function EndOfShiftImport({ shopId, items, menuItems, onApply }: EndOfShiftImpor
             <p role="alert" className="mt-3 text-sm" style={{ color: "var(--gw-danger-text)" }}>
               {error}
             </p>
+          )}
+          {pickColumns && (
+            <div className="mt-3 flex flex-wrap items-end gap-3">
+              {(
+                [
+                  ["Item name column", pickName, setPickName],
+                  ["Quantity sold column", pickQty, setPickQty],
+                ] as const
+              ).map(([label, value, set]) => (
+                <label key={label} className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
+                  {label}
+                  <select
+                    value={value}
+                    onChange={(e) => set(parseInt(e.target.value, 10))}
+                    className="rounded-md border px-2 py-1.5 min-h-11 bg-transparent focus:outline-none"
+                    style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
+                  >
+                    {pickColumns.map((c, i) => (
+                      <option key={i} value={i} style={{ color: "#000" }}>
+                        {c || `Column ${i + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+              <button
+                onClick={() => review({ nameCol: pickName, qtyCol: pickQty })}
+                disabled={pickName === pickQty}
+                className={buttonOutline}
+                style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
+              >
+                Use these columns
+              </button>
+            </div>
           )}
         </>
       )}

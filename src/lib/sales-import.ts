@@ -29,6 +29,14 @@ export interface ParseResult {
   rows: ParsedRow[];
   notes: string[];
   error: string | null;
+  // Set when the file has a header row we couldn't read by name: the labels,
+  // so the owner can pick the item-name and quantity columns themselves.
+  columns?: string[];
+}
+
+export interface ColumnChoice {
+  nameCol: number;
+  qtyCol: number;
 }
 
 export interface Recipe {
@@ -51,7 +59,11 @@ const NAME_HEADERS = [
   "item",
   "product name",
   "product",
+  "product option", // SumUp: "Product / option"
+  "product title",
   "menu item name",
+  "item description",
+  "description",
   "recipe",
   "name",
 ];
@@ -66,6 +78,11 @@ const QTY_HEADERS = [
   "units sold",
   "net qty",
   "net quantity",
+  "item quantity",
+  "total quantity",
+  "total qty",
+  "sales qty",
+  "number sold",
   "quantity",
   "qty",
   "units",
@@ -164,7 +181,17 @@ function findColumn(headers: string[], candidates: string[], banned: string[] = 
 const TOTAL_ROW = /^(grand\s+)?(sub)?totals?$/i;
 const TRUTHY = new Set(["true", "yes", "y", "1"]);
 
-export function parseSalesText(input: string): ParseResult {
+// The row holding column labels when none of them are ones we know: the first
+// of the top few rows that has several filled cells and no numbers in them.
+function findHeaderRow(table: string[][]): number {
+  for (let r = 0; r < Math.min(table.length, 6); r++) {
+    const filled = table[r].filter((c) => c.trim() !== "");
+    if (filled.length >= 3 && filled.every((c) => parseQty(c) === null)) return r;
+  }
+  return -1;
+}
+
+export function parseSalesText(input: string, override?: ColumnChoice): ParseResult {
   const text = input.replace(/^﻿/, "").replace(/\r\n?/g, "\n").trim();
   if (!text) return { rows: [], notes: [], error: "Paste your sales report first." };
 
@@ -179,9 +206,21 @@ export function parseSalesText(input: string): ParseResult {
   let voidIdx = -1;
   let start = 0;
 
+  // 0) The owner picked the columns themselves (the file's labels weren't ones
+  //    we know).
+  if (override) {
+    const headerRow = findHeaderRow(table);
+    const labels = headerRow >= 0 ? table[headerRow] : [];
+    nameIdx = override.nameCol;
+    qtyIdx = override.qtyCol;
+    start = headerRow + 1;
+    voidIdx = labels.map(normalizeHeader).findIndex((h) => h === "void");
+    notes.push(`Reading item names from "${labels[nameIdx]?.trim()}" and quantities from "${labels[qtyIdx]?.trim()}".`);
+  }
+
   // 1) A header row, found anywhere in the first few rows (some exports put
   //    a title or date range above it).
-  for (let r = 0; r < Math.min(table.length, 6); r++) {
+  for (let r = 0; r < Math.min(table.length, 6) && nameIdx < 0; r++) {
     const headers = table[r].map(normalizeHeader);
     const n = findColumn(headers, NAME_HEADERS);
     const q = findColumn(headers, QTY_HEADERS, BANNED_IN_QTY);
@@ -191,12 +230,25 @@ export function parseSalesText(input: string): ParseResult {
       varIdx = findColumn(headers, VARIATION_HEADERS);
       voidIdx = headers.findIndex((h) => h === "void");
       start = r + 1;
+      notes.push(`Reading item names from "${table[r][n].trim()}" and quantities from "${table[r][q].trim()}".`);
       break;
     }
   }
 
-  // 2) No recognizable header: infer which column holds quantities.
+  // 2) No recognizable header. A wide file with a header row we can't read
+  //    must not be guessed at (it would happily pick "Tax" as the quantity),
+  //    so hand the labels back and let the owner choose. Otherwise infer which
+  //    column holds quantities.
   if (nameIdx < 0) {
+    const headerRow = findHeaderRow(table);
+    if (headerRow >= 0) {
+      return {
+        rows: [],
+        notes,
+        columns: table[headerRow].map((c) => c.trim()),
+        error: "We don't recognize this report's column names yet. Pick which column is the item name and which is the quantity sold.",
+      };
+    }
     const sample = table.slice(0, 20);
     const width = Math.max(...sample.map((r) => r.length));
     let bestCol = -1;

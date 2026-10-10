@@ -178,6 +178,15 @@ function findColumn(headers: string[], candidates: string[], banned: string[] = 
   return -1;
 }
 
+// One sold line (also used for lines that arrive from a POS connection rather
+// than a file): drops "Regular"-style placeholder variations and builds the
+// key that identical lines are grouped and remembered under.
+export function buildRow(name: string, variation: string | null | undefined, qty: number): ParsedRow {
+  const rawVar = (variation ?? "").trim();
+  const cleanVar = GENERIC_VARIATIONS.has(rawVar.toLowerCase()) ? null : rawVar;
+  return { key: `${normalizeName(name)}|${normalizeName(cleanVar ?? "")}`, name: name.trim(), variation: cleanVar, qty };
+}
+
 const TOTAL_ROW = /^(grand\s+)?(sub)?totals?$/i;
 const TRUTHY = new Set(["true", "yes", "y", "1"]);
 
@@ -300,11 +309,10 @@ export function parseSalesText(input: string, override?: ColumnChoice): ParseRes
       continue;
     }
     const rawVar = varIdx >= 0 ? (cells[varIdx] ?? "").trim() : "";
-    const variation = GENERIC_VARIATIONS.has(rawVar.toLowerCase()) ? null : rawVar;
-    const key = `${normalizeName(name)}|${normalizeName(variation ?? "")}`;
-    const existing = bucket.get(key);
+    const row = buildRow(name, rawVar, qty);
+    const existing = bucket.get(row.key);
     if (existing) existing.qty += qty;
-    else bucket.set(key, { key, name, variation, qty });
+    else bucket.set(row.key, row);
   }
 
   const rows = [...bucket.values()];

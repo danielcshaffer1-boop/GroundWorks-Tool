@@ -1775,6 +1775,283 @@ function EndOfShiftImport({ shopId, items, menuItems, onApply }: EndOfShiftImpor
   );
 }
 
+// ---- Square connection (Pro) ----------------------------------------------
+
+interface SquareStatus {
+  configured: boolean;
+  connected: boolean;
+  status: "active" | "needs_reconnect" | null;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  connectedSince: string | null;
+  unmatched: { key: string; name: string; variation: string | null; qty: number }[];
+}
+
+const SQUARE_FLASH: Record<string, string> = {
+  connected: "Square is connected. Sales from now on will deduct ingredients automatically.",
+  declined: "Square wasn't connected — access was declined.",
+  error: "Couldn't finish connecting Square. Please try again.",
+};
+
+function SquareConnectionCard({
+  menuItems,
+  onStockChanged,
+}: {
+  menuItems: MenuItem[];
+  onStockChanged: () => void;
+}) {
+  const [status, setStatus] = useState<SquareStatus | null>(null);
+  const [busy, setBusy] = useState<"" | "connect" | "sync" | "disconnect">("");
+  const [message, setMessage] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return SQUARE_FLASH[new URLSearchParams(window.location.search).get("square") ?? ""] ?? "";
+  });
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+
+  async function loadStatus() {
+    try {
+      const res = await fetch("/api/square/status");
+      if (res.ok) setStatus((await res.json()) as SquareStatus);
+    } catch {
+      // The card just stays as it is until the next successful load.
+    }
+  }
+
+  useEffect(() => {
+    // The ?square=... result was read into `message` above; tidy the URL.
+    if (new URLSearchParams(window.location.search).has("square")) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/square/status");
+        if (res.ok && !cancelled) setStatus((await res.json()) as SquareStatus);
+      } catch {
+        // see loadStatus
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Not set up on this server (or still loading): no card, no dead button.
+  if (!status || !status.configured) return null;
+
+  async function connect() {
+    setBusy("connect");
+    setMessage("");
+    try {
+      const res = await fetch("/api/square/connect", { method: "POST" });
+      const data = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
+      if (!res.ok || !data?.url) {
+        setMessage(data?.error || "Couldn't start the Square connection. Try again.");
+        setBusy("");
+        return;
+      }
+      window.location.href = data.url;
+    } catch {
+      setMessage("Couldn't start the Square connection. Try again.");
+      setBusy("");
+    }
+  }
+
+  async function syncNow() {
+    setBusy("sync");
+    setMessage("");
+    try {
+      const res = await fetch("/api/square/sync", { method: "POST" });
+      const data = (await res.json().catch(() => null)) as { status?: string; ordersApplied?: number } | null;
+      if (!res.ok || !data) setMessage("Couldn't check Square. Try again.");
+      else if (data.status === "needs_reconnect") setMessage("Square access was removed. Reconnect to keep syncing.");
+      else if (data.status === "error") setMessage("Square didn't respond properly. We'll keep retrying automatically.");
+      else if (data.status === "synced") {
+        const n = data.ordersApplied ?? 0;
+        setMessage(n > 0 ? `Counted ${n} new sale${n === 1 ? "" : "s"} from Square.` : "Up to date. No new sales since the last check.");
+        if (n > 0) onStockChanged();
+      }
+      await loadStatus();
+    } catch {
+      setMessage("Couldn't check Square. Try again.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function disconnect() {
+    setBusy("disconnect");
+    setMessage("");
+    try {
+      const res = await fetch("/api/square/disconnect", { method: "POST" });
+      setMessage(res.ok ? "Square disconnected." : "Couldn't disconnect. Try again.");
+      setConfirmDisconnect(false);
+      await loadStatus();
+    } catch {
+      setMessage("Couldn't disconnect. Try again.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function resolve(key: string, menuItemId: number | null) {
+    try {
+      await fetch("/api/square/unmatched", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, menuItemId }),
+      });
+    } finally {
+      await loadStatus();
+    }
+  }
+
+  const labelCls = "font-mono text-xs uppercase tracking-widest";
+  const buttonPrimary = "px-4 py-2 min-h-11 rounded-md text-sm font-mono font-semibold disabled:opacity-40";
+  const buttonOutline = "px-4 py-2 min-h-11 rounded-md text-sm font-mono border disabled:opacity-40";
+  const needsReconnect = status.status === "needs_reconnect";
+
+  return (
+    <div className="rounded-lg border p-4 mb-6" style={{ borderColor: "var(--gw-border)" }}>
+      <div className={`${labelCls} mb-2`} style={{ color: "var(--gw-accent-text)" }}>
+        Square
+      </div>
+
+      {!status.connected ? (
+        <>
+          <p className="text-sm mb-3" style={{ color: "var(--gw-text-2)" }}>
+            Connect your Square account and GroundWorks deducts ingredients automatically as drinks are sold. No
+            end-of-shift file. It only reads your completed sales (read-only), and only counts sales made after you
+            connect.
+          </p>
+          <button
+            onClick={connect}
+            disabled={busy !== ""}
+            className={buttonPrimary}
+            style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
+          >
+            {busy === "connect" ? "Opening Square…" : "Connect Square"}
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="text-sm mb-1" style={{ color: needsReconnect ? "var(--gw-danger-text)" : "var(--gw-text)" }}>
+            {needsReconnect ? "Square access was removed — reconnect to keep syncing." : "Connected. Sales deduct automatically."}
+          </p>
+          <p className="text-xs mb-3" style={{ color: "var(--gw-text-3)" }}>
+            {status.lastSyncedAt ? `Last checked ${new Date(status.lastSyncedAt).toLocaleString()}.` : "Waiting for the first check."}
+            {status.connectedSince ? ` Counting sales since ${new Date(status.connectedSince).toLocaleDateString()}.` : ""}
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {needsReconnect ? (
+              <button
+                onClick={connect}
+                disabled={busy !== ""}
+                className={buttonPrimary}
+                style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
+              >
+                Reconnect Square
+              </button>
+            ) : (
+              <button
+                onClick={syncNow}
+                disabled={busy !== ""}
+                className={buttonOutline}
+                style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
+              >
+                {busy === "sync" ? "Checking…" : "Check for new sales"}
+              </button>
+            )}
+            {confirmDisconnect ? (
+              <>
+                <button
+                  onClick={disconnect}
+                  disabled={busy !== ""}
+                  className={buttonOutline}
+                  style={{ borderColor: "var(--gw-danger-text)", color: "var(--gw-danger-text)" }}
+                >
+                  Yes, disconnect
+                </button>
+                <button
+                  onClick={() => setConfirmDisconnect(false)}
+                  className={buttonOutline}
+                  style={{ borderColor: "var(--gw-border)", color: "var(--gw-text-2)" }}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setConfirmDisconnect(true)}
+                disabled={busy !== ""}
+                className={buttonOutline}
+                style={{ borderColor: "var(--gw-border)", color: "var(--gw-text-2)" }}
+              >
+                Disconnect
+              </button>
+            )}
+          </div>
+
+          {status.unmatched.length > 0 && (
+            <div className="mt-5">
+              <div className={`${labelCls} mb-1`} style={{ color: "var(--gw-text-3)" }}>
+                Sold in Square, no recipe yet
+              </div>
+              <p className="text-xs mb-2" style={{ color: "var(--gw-text-2)" }}>
+                These sold but didn&apos;t match a recipe, so nothing was deducted for them. Pick the recipe each one
+                means (it&apos;s remembered for next time), or make a recipe with the same name.
+              </p>
+              <ul>
+                {status.unmatched.map((u) => (
+                  <li
+                    key={u.key}
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 border-b"
+                    style={{ borderColor: "var(--gw-border)" }}
+                  >
+                    <span className="font-mono text-sm w-12 text-right" style={{ color: "var(--gw-text)" }}>
+                      {trimNumber(u.qty)}
+                    </span>
+                    <span className="text-sm flex-1 min-w-[8rem]" style={{ color: "var(--gw-text)" }}>
+                      {u.variation ? `${u.name} (${u.variation})` : u.name}
+                    </span>
+                    <select
+                      aria-label={`Recipe for ${u.name}`}
+                      value=""
+                      onChange={(e) => e.target.value && resolve(u.key, parseInt(e.target.value, 10))}
+                      className="rounded-md border px-2 py-1.5 min-h-11 text-xs font-mono bg-transparent focus:outline-none"
+                      style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
+                    >
+                      <option value="">Count as…</option>
+                      {menuItems.map((m) => (
+                        <option key={m.id} value={m.id} style={{ color: "#000" }}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => resolve(u.key, null)}
+                      className="text-xs font-mono px-2 min-h-11"
+                      style={{ color: "var(--gw-text-3)" }}
+                    >
+                      Ignore
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
+
+      {message && (
+        <p role="status" className="mt-3 text-sm" style={{ color: "var(--gw-text-2)" }}>
+          {message}
+        </p>
+      )}
+    </div>
+  );
+}
+
 interface RecipesPageProps {
   shopId: string;
   items: InventoryItem[];
@@ -1786,6 +2063,7 @@ interface RecipesPageProps {
   onChangeIngredientItem: (ingredientId: number, itemId: number) => void;
   onRemoveIngredient: (ingredientId: number) => void;
   onApplySales: (sales: SaleLine[]) => Promise<boolean>;
+  onStockChanged: () => void;
 }
 
 function RecipesPage({
@@ -1799,6 +2077,7 @@ function RecipesPage({
   onChangeIngredientItem,
   onRemoveIngredient,
   onApplySales,
+  onStockChanged,
 }: RecipesPageProps) {
   const linkableCount = items.filter((i) => i.unitSize).length;
 
@@ -1813,6 +2092,7 @@ function RecipesPage({
           one) with something like 32 oz per carton before you can build a recipe.
         </div>
       )}
+      <SquareConnectionCard menuItems={menuItems} onStockChanged={onStockChanged} />
       <AddMenuItemForm menuItems={menuItems} onAdd={onAddMenuItem} />
       {menuItems.map((mi) => (
         <MenuItemCard
@@ -2515,7 +2795,11 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
   // (Closing Count) or `batchDraft` below, which are an unrelated older
   // use of the word "batch" for the walk-the-storage-room recount flow.
   const [perishableBatches, setPerishableBatches] = useState<Batch[]>([]);
-  const [page, setPage] = useState<Page>("update");
+  // Coming back from Square's authorization screen lands on the Recipes tab,
+  // where the connection card (and its result message) lives.
+  const [page, setPage] = useState<Page>(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).has("square") ? "recipes" : "update"
+  );
   const [mode, setMode] = useState<Mode>("quick");
   const [batchDraft, setBatchDraft] = useState<Record<number, number | "">>({});
   const [showAdd, setShowAdd] = useState(false);
@@ -2620,6 +2904,18 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
   // the action that triggered it — the count change already succeeded and
   // is the source of truth either way; worst case the batch breakdown just
   // doesn't reflect the trim until the next reload.
+  // Re-reads stock after something outside this tab changed it (a Square
+  // sync). Quiet: a failed refresh just leaves what's on screen.
+  async function refreshStock() {
+    try {
+      const [fetchedItems, fetchedBatches] = await Promise.all([fetchItems(shop.id), fetchBatchesForShop(shop.id)]);
+      setItems(fetchedItems);
+      setPerishableBatches(fetchedBatches);
+    } catch {
+      // see comment above
+    }
+  }
+
   async function refreshBatches() {
     try {
       setPerishableBatches(await fetchBatchesForShop(shop.id));
@@ -3405,6 +3701,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
             onChangeIngredientItem={changeIngredientItem}
             onRemoveIngredient={removeIngredientFromMenuItem}
             onApplySales={applySales}
+            onStockChanged={refreshStock}
           />
         )}
 

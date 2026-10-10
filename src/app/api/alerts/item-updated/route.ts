@@ -95,7 +95,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "SMS isn't configured yet." }, { status: 500 });
   }
 
-  const body = `GroundWorks Inventory: ${record.name} is now ${STATUS_LABEL[newStatus]} — ${record.count} ${record.unit} left (threshold ${record.threshold}). Reply STOP to opt out.`;
+  // Automatic Square deductions leave fractional counts (0.8734 gallons); texts read better rounded.
+  const shownCount = Math.round(Number(record.count) * 100) / 100;
+  const body = `GroundWorks Inventory: ${record.name} is now ${STATUS_LABEL[newStatus]} — ${shownCount} ${record.unit} left (threshold ${record.threshold}). Reply STOP to opt out.`;
 
   const results = await Promise.all(
     (recipients as { phone: string }[]).map(({ phone }) =>

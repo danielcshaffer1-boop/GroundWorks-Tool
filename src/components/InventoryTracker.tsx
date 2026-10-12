@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   Plus,
   Minus,
@@ -173,6 +173,42 @@ function StatusStamp({ status }: { status: Status }) {
 
 // ---- Item row ---------------------------------------------------------
 
+// A small action under an item with its name written out (an icon alone makes a
+// barista guess), and a tap target big enough for a gloved or wet thumb.
+function RowAction({
+  Icon,
+  label,
+  ariaLabel,
+  onClick,
+}: {
+  Icon: LucideIcon;
+  label: string;
+  ariaLabel: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={ariaLabel}
+      className="flex flex-col items-center justify-center gap-1 min-w-[48px] h-12 px-1 rounded-lg border shrink-0 hover:brightness-125"
+      style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text-2)" }}
+    >
+      <Icon size={15} />
+      <span className="text-[10px] font-mono leading-none">{label}</span>
+    </button>
+  );
+}
+
+// When a panel opens under an item, bring it into view: on a long list the
+// panel can otherwise open off-screen and look like the tap did nothing.
+function ScrollIntoView({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, []);
+  return <div ref={ref}>{children}</div>;
+}
+
 interface ItemRowProps {
   item: InventoryItem;
   mode: Mode;
@@ -202,7 +238,6 @@ function ItemRow({
   // fall back to the item's real count just for the status-color preview,
   // rather than treating a blank field as a count of zero.
   const status = getStatus(mode === "batch" ? { ...item, count: batchValue === "" ? item.count : batchValue } : item);
-  const meta = STATUS_META[status];
   const qty = displayQuantity(item, displayMode, item.count);
   // Same condition displayQuantity uses to decide whether Amount mode
   // actually applies to this item (some items have no unitSize/unitMeasure
@@ -232,9 +267,13 @@ function ItemRow({
             {item.name.toUpperCase()}
           </div>
           <div className="font-mono text-xs mt-0.5" style={{ color: "var(--gw-text-2)" }}>
-            threshold {displayThreshold(item, displayMode)} · {meta.label.toLowerCase()}
-            {item.unitSize ? ` · 1 ${item.unit.replace(/s$/, "")} = ${item.unitSize} ${item.unitMeasure}` : ""}
+            Reorder at {displayThreshold(item, displayMode)}
           </div>
+          {item.unitSize ? (
+            <div className="font-mono text-[11px] mt-0.5" style={{ color: "var(--gw-text-3)" }}>
+              1 {item.unit.replace(/s$/, "")} = {item.unitSize} {item.unitMeasure}
+            </div>
+          ) : null}
           {nearestBatch && (
             <div
               className="font-mono text-[11px] mt-0.5 flex items-center gap-1"
@@ -311,37 +350,12 @@ function ItemRow({
           </div>
         )}
 
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={() => onAddStock(item.id)}
-            className="w-8 h-8 tap-44 rounded-full flex items-center justify-center border shrink-0 hover:brightness-125"
-            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text-2)" }}
-            aria-label={`Add stock for ${item.name}`}
-            title="Add stock — just picked some up?"
-          >
-            <PackagePlus size={14} />
-          </button>
-
+        <div className="flex items-center gap-1 shrink-0">
+          <RowAction Icon={PackagePlus} label="Delivery" ariaLabel={`Add stock for ${item.name}`} onClick={() => onAddStock(item.id)} />
           {isPerishable && (
-            <button
-              onClick={() => onEditBatches(item.id)}
-              className="w-8 h-8 tap-44 rounded-full flex items-center justify-center border shrink-0 hover:brightness-125"
-              style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text-2)" }}
-              aria-label={`Manage batches for ${item.name}`}
-              title="Batches — track expiration, FIFO"
-            >
-              <CalendarClock size={14} />
-            </button>
+            <RowAction Icon={CalendarClock} label="Expiry" ariaLabel={`Manage batches for ${item.name}`} onClick={() => onEditBatches(item.id)} />
           )}
-
-          <button
-            onClick={() => onEdit(item.id)}
-            className="w-8 h-8 tap-44 rounded-full flex items-center justify-center border shrink-0 hover:brightness-125"
-            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text-2)" }}
-            aria-label={`Edit ${item.name}`}
-          >
-            <PencilLine size={14} />
-          </button>
+          <RowAction Icon={PencilLine} label="Edit" ariaLabel={`Edit ${item.name}`} onClick={() => onEdit(item.id)} />
         </div>
       </div>
     </div>
@@ -3164,6 +3178,9 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
   const [editingItemId, setEditingItemId] = useState<number | null>(null);
   const [addingStockId, setAddingStockId] = useState<number | null>(null);
   const [editingBatchesItemId, setEditingBatchesItemId] = useState<number | null>(null);
+  // Update-tab filters: a search box and tapping a status tile (Critical / Reorder soon / Stocked).
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<Status | null>(null);
   // Cosmetic only (see displayQuantity/displayThreshold) — initialized from
   // the shop's saved preference, persisted on change via updateDisplayMode.
   const [displayMode, setDisplayMode] = useState<DisplayMode>(shop.displayMode);
@@ -3513,10 +3530,32 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
     }
   }
 
+  // Only one panel (edit / delivery / expiry / new item) is ever open, and it
+  // opens right under the item it belongs to.
+  function openPanel(kind: "edit" | "stock" | "batches", id: number) {
+    setShowAdd(false);
+    setEditingItemId(kind === "edit" ? id : null);
+    setAddingStockId(kind === "stock" ? id : null);
+    setEditingBatchesItemId(kind === "batches" ? id : null);
+    // The item has to be visible for its panel to be: un-collapse its section
+    // and clear any search or status filter.
+    const cat = items.find((i) => i.id === id)?.category;
+    if (cat) {
+      setCollapsedCategories((prev) => {
+        if (!prev.has(cat)) return prev;
+        const next = new Set(prev);
+        next.delete(cat);
+        return next;
+      });
+    }
+    setQuery("");
+    setStatusFilter(null);
+  }
+
   function jumpToEdit(id: number) {
     setPage("update");
     setMode("quick");
-    setEditingItemId(id);
+    openPanel("edit", id);
   }
 
   async function saveItemEdit(id: number, patch: Omit<InventoryItem, "id">) {
@@ -3701,7 +3740,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
             className="font-mono text-xs underline underline-offset-2"
             style={{ color: "var(--gw-text-2)" }}
           >
-            Switch shop
+            Sign out
           </button>
         </div>
       </div>
@@ -3744,7 +3783,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
                 className="font-mono text-xs mt-1 underline underline-offset-2"
                 style={{ color: "var(--gw-text-2)" }}
               >
-                Switch shop
+                Sign out
               </button>
             </div>
           </div>
@@ -3773,58 +3812,6 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
             ))}
           </nav>
 
-          <div className="flex items-center gap-3 flex-wrap">
-            {/* Count/Amount only changes how Update and Spreadsheet show quantities */}
-            {(page === "update" || page === "spreadsheet") && (
-              <div
-                className="flex items-center gap-1 p-1 rounded-lg border w-fit"
-                style={{ borderColor: "var(--gw-border)", backgroundColor: "var(--gw-surface-sunk)" }}
-                title="How quantities are shown — count of units, or a converted total amount"
-              >
-                <button
-                  onClick={() => changeDisplayMode("count")}
-                  className="px-3 py-2 rounded-md text-xs font-mono"
-                  style={{
-                    backgroundColor: displayMode === "count" ? "var(--gw-surface-selected)" : "transparent",
-                    color: displayMode === "count" ? "var(--gw-text)" : "var(--gw-text-3)",
-                  }}
-                >
-                  Count
-                </button>
-                <button
-                  onClick={() => changeDisplayMode("measurement")}
-                  className="px-3 py-2 rounded-md text-xs font-mono"
-                  style={{
-                    backgroundColor: displayMode === "measurement" ? "var(--gw-surface-selected)" : "transparent",
-                    color: displayMode === "measurement" ? "var(--gw-text)" : "var(--gw-text-3)",
-                  }}
-                >
-                  Amount
-                </button>
-              </div>
-            )}
-
-            {isDemoShop ? (
-              <div
-                className="px-3 py-2 rounded-full text-[11px] font-mono border"
-                style={{ borderColor: "var(--gw-border)", color: "var(--gw-text-3)" }}
-              >
-                ★ Pro plan · Demo, billing off
-              </div>
-            ) : (
-              <button
-                onClick={openBillingPortal}
-                disabled={portalLoading}
-                className="px-3 py-2 rounded-full text-[11px] font-mono border disabled:opacity-60"
-                style={{
-                  borderColor: tier === "pro" ? "var(--gw-accent)" : "var(--gw-border)",
-                  color: tier === "pro" ? "var(--gw-accent-text)" : "var(--gw-text-3)",
-                }}
-              >
-                {tier === "pro" ? "★ Pro plan" : "Standard plan"} · {portalLoading ? "Opening…" : "Manage billing"}
-              </button>
-            )}
-          </div>
         </div>
 
         {page === "update" && (
@@ -3833,10 +3820,17 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
         {items.length > 0 && (
         <div className="grid grid-cols-3 gap-3 mb-8">
           {(["critical", "low", "good"] as Status[]).map((s) => (
-            <div
+            <button
               key={s}
-              className="rounded-lg border px-3 py-3 text-center"
-              style={{ borderColor: "var(--gw-border)" }}
+              type="button"
+              onClick={() => setStatusFilter((cur) => (cur === s ? null : s))}
+              aria-pressed={statusFilter === s}
+              aria-label={`Show only ${STATUS_META[s].label} items (${counts[s]})`}
+              className="rounded-lg border px-3 py-3 text-center min-h-11"
+              style={{
+                borderColor: statusFilter === s ? STATUS_META[s].color : "var(--gw-border)",
+                backgroundColor: statusFilter === s ? "var(--gw-surface-selected)" : "transparent",
+              }}
             >
               <div className="font-mono text-2xl font-bold" style={{ color: STATUS_META[s].color }}>
                 {counts[s]}
@@ -3844,7 +3838,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
               <div className="font-mono text-[11px] uppercase tracking-widest mt-1" style={{ color: "var(--gw-text-2)" }}>
                 {STATUS_META[s].label}
               </div>
-            </div>
+            </button>
           ))}
         </div>
         )}
@@ -3860,7 +3854,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
               color: mode === "quick" ? "var(--gw-bg)" : "var(--gw-text-2)",
             }}
           >
-            <Plus size={14} /> Quick Log
+            <Plus size={14} /> Quick adjust
           </button>
           <button
             onClick={enterBatchMode}
@@ -3874,7 +3868,12 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
             <ClipboardList size={14} /> Closing Count
           </button>
           <button
-            onClick={() => setShowAdd((v) => !v)}
+            onClick={() => {
+              setEditingItemId(null);
+              setAddingStockId(null);
+              setEditingBatchesItemId(null);
+              setShowAdd((v) => !v);
+            }}
             className="col-span-2 sm:col-span-1 sm:ml-auto px-4 py-2 min-h-11 rounded-full text-sm font-mono flex items-center justify-center border border-dashed"
             style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text-2)" }}
           >
@@ -3882,44 +3881,39 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
           </button>
         </div>
 
+        {mode === "quick" && items.length > 0 && !showAdd && (
+          <p className="text-xs -mt-3 mb-5" style={{ color: "var(--gw-text-3)" }}>
+            Tap − when you use something up, + when you restock.
+          </p>
+        )}
+
         {showAdd && <AddItemForm onAdd={addItem} onCancel={() => setShowAdd(false)} />}
 
-        {editingItemId !== null &&
-          (() => {
-            const editingItem = items.find((i) => i.id === editingItemId);
-            if (!editingItem) return null;
-            return (
-              <EditItemForm
-                item={editingItem}
-                onSave={saveItemEdit}
-                onCancel={() => setEditingItemId(null)}
-                onDelete={deleteItem}
-              />
-            );
-          })()}
-
-        {addingStockId !== null &&
-          (() => {
-            const stockItem = items.find((i) => i.id === addingStockId);
-            if (!stockItem) return null;
-            return <AddStockForm item={stockItem} onAdd={addStock} onCancel={() => setAddingStockId(null)} />;
-          })()}
-
-        {editingBatchesItemId !== null &&
-          (() => {
-            const batchItem = items.find((i) => i.id === editingBatchesItemId);
-            if (!batchItem) return null;
-            return (
-              <BatchEditor
-                item={batchItem}
-                batches={perishableBatches.filter((b) => b.itemId === batchItem.id)}
-                onAddBatch={addBatch}
-                onEditBatch={editBatch}
-                onDeleteBatch={removeBatch}
-                onClose={() => setEditingBatchesItemId(null)}
-              />
-            );
-          })()}
+        {items.length >= 6 && (
+          <div className="mb-6 flex items-center gap-2">
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Find an item…"
+              aria-label="Find an item"
+              className="flex-1 rounded-md border px-3 py-2 min-h-11 bg-transparent focus:outline-none"
+              style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
+            />
+            {(query || statusFilter) && (
+              <button
+                onClick={() => {
+                  setQuery("");
+                  setStatusFilter(null);
+                }}
+                className="px-3 min-h-11 text-xs font-mono underline underline-offset-2"
+                style={{ color: "var(--gw-text-2)" }}
+              >
+                Show all
+              </button>
+            )}
+          </div>
+        )}
 
         {mode === "batch" && (
           <div
@@ -3958,10 +3952,14 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
         {/* Category sections */}
         <div className="md:grid md:grid-cols-2 md:gap-x-12">
         {CATEGORIES.map((cat) => {
-          const catItems = items.filter((i) => i.category === cat.id);
+          const needle = query.trim().toLowerCase();
+          const filtering = needle !== "" || statusFilter !== null;
+          const catItems = items
+            .filter((i) => i.category === cat.id)
+            .filter((i) => (statusFilter === null || getStatus(i) === statusFilter) && (needle === "" || i.name.toLowerCase().includes(needle)));
           if (catItems.length === 0) return null;
           const Icon = cat.icon;
-          const collapsed = collapsedCategories.has(cat.id);
+          const collapsed = collapsedCategories.has(cat.id) && !filtering;
           return (
             <div key={cat.id} className="mb-8">
               <button
@@ -3993,19 +3991,42 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
               {!collapsed && (
                 <div>
                   {catItems.map((item) => (
-                    <ItemRow
-                      key={item.id}
-                      item={item}
-                      mode={mode}
-                      displayMode={displayMode}
-                      batches={perishableBatches.filter((b) => b.itemId === item.id)}
-                      onAdjust={adjustQuick}
-                      onBatchChange={changeBatchDraft}
-                      batchValue={batchDraft[item.id] ?? item.count}
-                      onEdit={jumpToEdit}
-                      onAddStock={setAddingStockId}
-                      onEditBatches={setEditingBatchesItemId}
-                    />
+                    <div key={item.id}>
+                      <ItemRow
+                        item={item}
+                        mode={mode}
+                        displayMode={displayMode}
+                        batches={perishableBatches.filter((b) => b.itemId === item.id)}
+                        onAdjust={adjustQuick}
+                        onBatchChange={changeBatchDraft}
+                        batchValue={batchDraft[item.id] ?? item.count}
+                        onEdit={(id) => openPanel("edit", id)}
+                        onAddStock={(id) => openPanel("stock", id)}
+                        onEditBatches={(id) => openPanel("batches", id)}
+                      />
+                      {editingItemId === item.id && (
+                        <ScrollIntoView>
+                          <EditItemForm item={item} onSave={saveItemEdit} onCancel={() => setEditingItemId(null)} onDelete={deleteItem} />
+                        </ScrollIntoView>
+                      )}
+                      {addingStockId === item.id && (
+                        <ScrollIntoView>
+                          <AddStockForm item={item} onAdd={addStock} onCancel={() => setAddingStockId(null)} />
+                        </ScrollIntoView>
+                      )}
+                      {editingBatchesItemId === item.id && (
+                        <ScrollIntoView>
+                          <BatchEditor
+                            item={item}
+                            batches={perishableBatches.filter((b) => b.itemId === item.id)}
+                            onAddBatch={addBatch}
+                            onEditBatch={editBatch}
+                            onDeleteBatch={removeBatch}
+                            onClose={() => setEditingBatchesItemId(null)}
+                          />
+                        </ScrollIntoView>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
@@ -4013,6 +4034,12 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
           );
         })}
         </div>
+        {items.length > 0 && (query.trim() !== "" || statusFilter !== null) &&
+          !items.some((i) => (statusFilter === null || getStatus(i) === statusFilter) && (query.trim() === "" || i.name.toLowerCase().includes(query.trim().toLowerCase()))) && (
+            <p className="text-sm py-6 text-center" style={{ color: "var(--gw-text-2)" }}>
+              Nothing matches. Tap Show all to see everything.
+            </p>
+          )}
         </>
         )}
 
@@ -4072,7 +4099,67 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
           />
         )}
 
-        <div className="text-center font-mono text-[11px] uppercase tracking-widest mt-10" style={{ color: "var(--gw-text-3)" }}>
+        <div className="mt-10 pt-5 border-t flex flex-wrap items-center justify-between gap-4" style={{ borderColor: "var(--gw-border)" }}>
+          <div className="flex items-center gap-3 flex-wrap">
+            {(page === "update" || page === "spreadsheet") && (
+              <span className="text-[11px] font-mono" style={{ color: "var(--gw-text-3)" }}>
+                Show quantities as
+              </span>
+            )}
+            {/* Count/Amount only changes how Update and Spreadsheet show quantities */}
+            {(page === "update" || page === "spreadsheet") && (
+              <div
+                className="flex items-center gap-1 p-1 rounded-lg border w-fit"
+                style={{ borderColor: "var(--gw-border)", backgroundColor: "var(--gw-surface-sunk)" }}
+                title="Units shows gallons, cartons, bags. Measure shows the total in oz, pumps, cups."
+              >
+                <button
+                  onClick={() => changeDisplayMode("count")}
+                  className="px-3 py-2 rounded-md text-xs font-mono"
+                  style={{
+                    backgroundColor: displayMode === "count" ? "var(--gw-surface-selected)" : "transparent",
+                    color: displayMode === "count" ? "var(--gw-text)" : "var(--gw-text-3)",
+                  }}
+                >
+                  Units
+                </button>
+                <button
+                  onClick={() => changeDisplayMode("measurement")}
+                  className="px-3 py-2 rounded-md text-xs font-mono"
+                  style={{
+                    backgroundColor: displayMode === "measurement" ? "var(--gw-surface-selected)" : "transparent",
+                    color: displayMode === "measurement" ? "var(--gw-text)" : "var(--gw-text-3)",
+                  }}
+                >
+                  Measure
+                </button>
+              </div>
+            )}
+
+            {isDemoShop ? (
+              <div
+                className="px-3 py-2 rounded-full text-[11px] font-mono border"
+                style={{ borderColor: "var(--gw-border)", color: "var(--gw-text-3)" }}
+              >
+                ★ Pro plan · Demo, billing off
+              </div>
+            ) : (
+              <button
+                onClick={openBillingPortal}
+                disabled={portalLoading}
+                className="px-3 py-2 rounded-full text-[11px] font-mono border disabled:opacity-60"
+                style={{
+                  borderColor: tier === "pro" ? "var(--gw-accent)" : "var(--gw-border)",
+                  color: tier === "pro" ? "var(--gw-accent-text)" : "var(--gw-text-3)",
+                }}
+              >
+                {tier === "pro" ? "★ Pro plan" : "Standard plan"} · {portalLoading ? "Opening…" : "Manage billing"}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="text-center font-mono text-[11px] uppercase tracking-widest mt-6" style={{ color: "var(--gw-text-3)" }}>
           Text alerts fire automatically when an item crosses into Reorder or Critical
         </div>
       </div>
@@ -4176,7 +4263,7 @@ function NoPlanScreen({ shopName, onLogout }: NoPlanScreenProps) {
           className="font-mono text-xs underline underline-offset-2"
           style={{ color: "var(--gw-text-2)" }}
         >
-          Switch shop
+          Sign out
         </button>
       </div>
     </div>

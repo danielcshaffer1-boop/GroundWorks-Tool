@@ -386,3 +386,25 @@ export async function consumeBatchesFIFO(itemId: number, amount: number): Promis
   const { error } = await supabase.rpc("consume_batches_fifo", { p_item_id: itemId, p_amount: amount });
   if (error) throw error;
 }
+
+// "Somebody already ordered this" marks for the What-to-order list (supabase/015).
+// Reading is forgiving: if the table isn't there yet the list simply starts empty
+// rather than breaking the whole dashboard.
+export async function fetchOrderMarks(shopId: string): Promise<number[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase.from("order_marks").select("item_id").eq("shop_id", shopId);
+  if (error) return [];
+  return (data as { item_id: number }[]).map((r) => r.item_id);
+}
+
+export async function saveOrderMarks(shopId: string, itemIds: number[], marked: boolean): Promise<void> {
+  if (itemIds.length === 0) return;
+  const supabase = createClient();
+  if (marked) {
+    const { error } = await supabase.from("order_marks").upsert(itemIds.map((id) => ({ item_id: id, shop_id: shopId })), { onConflict: "item_id" });
+    if (error) throw error;
+  } else {
+    const { error } = await supabase.from("order_marks").delete().in("item_id", itemIds);
+    if (error) throw error;
+  }
+}

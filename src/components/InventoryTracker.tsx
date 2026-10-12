@@ -22,6 +22,8 @@ import {
   PackagePlus,
   CalendarClock,
   ChevronDown,
+  ShoppingCart,
+  Unlock,
   type LucideIcon,
 } from "lucide-react";
 import type {
@@ -41,6 +43,7 @@ import type {
 } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import { buildOrderList, orderText } from "@/lib/order-list";
 import {
   parseSalesText,
   matchRecipe,
@@ -72,6 +75,8 @@ import {
   updateDisplayMode,
   updateExpirationAlertDays,
   fetchBatchesForShop,
+  fetchOrderMarks,
+  saveOrderMarks,
   insertBatch,
   updateBatch,
   deleteBatchRow,
@@ -3143,6 +3148,403 @@ function EmptyInventory({ onAdd, onAlerts }: { onAdd: () => void; onAlerts: () =
 
 // ---- Shop dashboard ---------------------------------------------------------
 
+// ---- Owner PIN, undo bar, and the What-to-order tab --------------------------
+
+type PinDialogMode = "unlock" | "settings";
+
+function OwnerPinDialog({
+  mode,
+  pinEnabled,
+  onClose,
+  onUnlocked,
+  onPinChanged,
+}: {
+  mode: PinDialogMode;
+  pinEnabled: boolean;
+  onClose: () => void;
+  onUnlocked: () => void;
+  onPinChanged: (enabled: boolean) => void;
+}) {
+  const [pin, setPin] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState("");
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  async function call(body: Record<string, string>): Promise<boolean> {
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/owner-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        setError(data?.error || "Something went wrong. Try again.");
+        return false;
+      }
+      return true;
+    } catch {
+      setError("Couldn't reach the server. Try again.");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unlock(e: React.FormEvent) {
+    e.preventDefault();
+    if (await call({ action: "verify", pin })) onUnlocked();
+    else setPin("");
+  }
+
+  async function savePin(e: React.FormEvent) {
+    e.preventDefault();
+    if (await call({ action: "set", pin, password })) {
+      onPinChanged(true);
+      setPin("");
+      setPassword("");
+      setDone("Owner PIN saved. Settings are locked until someone enters it.");
+    }
+  }
+
+  async function removePin() {
+    if (await call({ action: "remove", password })) {
+      onPinChanged(false);
+      setPassword("");
+      setDone("Owner PIN removed. Everyone can change settings again.");
+    }
+  }
+
+  const inputCls = "w-full rounded-md border px-3 py-2 min-h-11 bg-transparent focus:outline-none text-lg font-mono";
+  const inputStyle = { borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" };
+  const primary = "px-4 py-2 min-h-11 rounded-md text-sm font-mono font-semibold disabled:opacity-40";
+  const outline = "px-4 py-2 min-h-11 rounded-md text-sm font-mono border";
+
+  return (
+    <div
+      className="fixed inset-0 z-40 flex items-center justify-center px-5"
+      style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={mode === "unlock" ? "Enter owner PIN" : "Owner PIN"}
+        className="w-full max-w-sm rounded-lg border p-5"
+        style={{ borderColor: "var(--gw-border-strong)", backgroundColor: "var(--gw-surface-raised)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {mode === "unlock" ? (
+          <form onSubmit={unlock}>
+            <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: "var(--gw-accent-text)" }}>
+              Owner PIN
+            </div>
+            <p className="text-sm mb-4" style={{ color: "var(--gw-text-2)" }}>
+              This is for the owner or manager. Enter the PIN to change settings.
+            </p>
+            <input
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={6}
+              autoFocus
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+              aria-label="Owner PIN"
+              placeholder="••••"
+              className={`${inputCls} text-center tracking-[0.5em]`}
+              style={inputStyle}
+            />
+            {error && (
+              <p role="alert" className="text-sm mt-3" style={{ color: "var(--gw-danger-text)" }}>
+                {error}
+              </p>
+            )}
+            <div className="flex gap-3 mt-4">
+              <button
+                type="submit"
+                disabled={busy || pin.length < 4}
+                className={`${primary} flex-1`}
+                style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
+              >
+                {busy ? "Checking…" : "Unlock"}
+              </button>
+              <button type="button" onClick={onClose} className={outline} style={{ borderColor: "var(--gw-border)", color: "var(--gw-text-2)" }}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : (
+          <form onSubmit={savePin}>
+            <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: "var(--gw-accent-text)" }}>
+              {pinEnabled ? "Owner PIN" : "Set an owner PIN"}
+            </div>
+            <p className="text-sm mb-4" style={{ color: "var(--gw-text-2)" }}>
+              With a PIN on, your team can still count, log usage and receive deliveries. Editing items, Recipes, Alerts and billing ask for the PIN first.
+            </p>
+            {done ? (
+              <p role="status" className="text-sm mb-4" style={{ color: "var(--gw-ok)" }}>
+                {done}
+              </p>
+            ) : (
+              <>
+                <label className="block text-xs font-mono mb-1" style={{ color: "var(--gw-text-2)" }}>
+                  {pinEnabled ? "New PIN (4 to 6 digits)" : "PIN (4 to 6 digits)"}
+                </label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  maxLength={6}
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+                  aria-label="New PIN"
+                  className={`${inputCls} text-center tracking-[0.5em] mb-3`}
+                  style={inputStyle}
+                />
+                <label className="block text-xs font-mono mb-1" style={{ color: "var(--gw-text-2)" }}>
+                  Your account password (to confirm it&apos;s you)
+                </label>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  aria-label="Account password"
+                  className={`${inputCls} text-base`}
+                  style={inputStyle}
+                />
+              </>
+            )}
+            {error && (
+              <p role="alert" className="text-sm mt-3" style={{ color: "var(--gw-danger-text)" }}>
+                {error}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-3 mt-4">
+              {!done && (
+                <button
+                  type="submit"
+                  disabled={busy || pin.length < 4 || !password}
+                  className={`${primary} flex-1`}
+                  style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
+                >
+                  {busy ? "Saving…" : pinEnabled ? "Change PIN" : "Save PIN"}
+                </button>
+              )}
+              {!done && pinEnabled && (
+                <button
+                  type="button"
+                  onClick={removePin}
+                  disabled={busy || !password}
+                  className={`${outline} disabled:opacity-40`}
+                  style={{ borderColor: "var(--gw-danger-text)", color: "var(--gw-danger-text)" }}
+                >
+                  Remove PIN
+                </button>
+              )}
+              <button type="button" onClick={onClose} className={outline} style={{ borderColor: "var(--gw-border)", color: "var(--gw-text-2)" }}>
+                {done ? "Close" : "Cancel"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OwnerOnlyPanel({ onUnlock }: { onUnlock: () => void }) {
+  return (
+    <div className="rounded-lg border p-8 text-center" style={{ borderColor: "var(--gw-border)", backgroundColor: "var(--gw-surface)" }}>
+      <Lock size={22} className="mx-auto mb-3" style={{ color: "var(--gw-border-strong)" }} />
+      <div className="font-semibold mb-2" style={{ color: "var(--gw-text)", fontFamily: "var(--font-display)", fontSize: 20 }}>
+        OWNER ONLY
+      </div>
+      <p className="text-sm mb-4 max-w-sm mx-auto" style={{ color: "var(--gw-text-2)" }}>
+        Settings are locked on this device. Enter the owner PIN to open them.
+      </p>
+      <button
+        onClick={onUnlock}
+        className="px-4 py-2 min-h-11 rounded-md text-sm font-mono font-semibold"
+        style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
+      >
+        Enter owner PIN
+      </button>
+    </div>
+  );
+}
+
+// A few seconds after a −/+ tap: shows what changed and lets a mis-tap be
+// undone in one tap. Taps on the same item keep folding into one undo.
+function UndoBar({ text, onUndo }: { text: string; onUndo: () => void }) {
+  return (
+    <div className="fixed inset-x-0 bottom-4 z-30 flex justify-center px-4 pointer-events-none">
+      <div
+        role="status"
+        aria-live="polite"
+        className="pointer-events-auto flex items-center gap-4 rounded-lg border pl-4 pr-2 py-1.5 max-w-md w-full"
+        style={{ borderColor: "var(--gw-border-strong)", backgroundColor: "var(--gw-surface-raised)" }}
+      >
+        <span className="flex-1 text-sm font-mono" style={{ color: "var(--gw-text)" }}>
+          {text}
+        </span>
+        <button
+          onClick={onUndo}
+          className="px-4 min-h-11 rounded-md text-sm font-mono font-semibold"
+          style={{ color: "var(--gw-accent-text)" }}
+        >
+          Undo
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function OrderPage({
+  shopName,
+  items,
+  marks,
+  onMark,
+}: {
+  shopName: string;
+  items: InventoryItem[];
+  marks: ReadonlySet<number>;
+  onMark: (ids: number[], marked: boolean) => void;
+}) {
+  const { toOrder, ordered } = useMemo(() => buildOrderList(items, marks), [items, marks]);
+  const [note, setNote] = useState("");
+
+  async function share() {
+    const text = orderText(shopName, toOrder, new Date());
+    try {
+      if (typeof navigator.share === "function") {
+        await navigator.share({ text });
+        return;
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return; // they closed the share sheet
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setNote("Copied. Paste it into a message or your supplier's order form.");
+    } catch {
+      setNote("Couldn't copy. Try again.");
+    }
+  }
+
+  const labelCls = "font-mono text-xs uppercase tracking-widest";
+  const outline = "px-4 py-2 min-h-11 rounded-md text-sm font-mono border";
+
+  const row = (line: (typeof toOrder)[number], done: boolean) => (
+    <li
+      key={line.item.id}
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3 border-b"
+      style={{ borderColor: "var(--gw-border)" }}
+    >
+      <span
+        className="shrink-0 w-2.5 h-2.5 rounded-full"
+        style={{ backgroundColor: line.status === "critical" ? "var(--gw-danger-text)" : "var(--gw-warn)" }}
+        aria-hidden="true"
+      />
+      <div className="flex-1 min-w-[9rem]">
+        <div className="font-semibold" style={{ color: "var(--gw-text)", fontFamily: "var(--font-display)", fontSize: 18 }}>
+          {line.item.name.toUpperCase()}
+        </div>
+        <div className="font-mono text-xs" style={{ color: "var(--gw-text-2)" }}>
+          {line.status === "critical" ? "Critical" : "Running low"} · have {trimNumber(line.item.count)} {line.item.unit}
+        </div>
+      </div>
+      <div className="font-mono text-sm text-right" style={{ color: "var(--gw-text)" }}>
+        {done ? "Ordered" : `Order ${line.suggested} ${line.item.unit}`}
+      </div>
+      <button
+        onClick={() => onMark([line.item.id], !done)}
+        className={outline}
+        style={{ borderColor: done ? "var(--gw-border)" : "var(--gw-accent)", color: done ? "var(--gw-text-3)" : "var(--gw-accent-text)" }}
+        aria-label={done ? `Not ordered yet: ${line.item.name}` : `Mark ${line.item.name} as ordered`}
+      >
+        {done ? "Undo" : "Ordered ✓"}
+      </button>
+    </li>
+  );
+
+  if (toOrder.length === 0 && ordered.length === 0) {
+    return (
+      <div className="rounded-lg border p-8 text-center" style={{ borderColor: "var(--gw-border)", backgroundColor: "var(--gw-surface)" }}>
+        <Check size={22} className="mx-auto mb-3" style={{ color: "var(--gw-ok)" }} />
+        <div className="font-semibold mb-2" style={{ color: "var(--gw-text)", fontFamily: "var(--font-display)", fontSize: 20 }}>
+          NOTHING TO ORDER
+        </div>
+        <p className="text-sm max-w-sm mx-auto" style={{ color: "var(--gw-text-2)" }}>
+          Everything is above its reorder level. Items show up here on their own when they run low.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <p className="text-sm mb-4" style={{ color: "var(--gw-text-2)" }}>
+        Everything at or below its reorder level, most urgent first. The amount is enough to get back to double the reorder level.
+      </p>
+
+      {toOrder.length > 0 && (
+        <>
+          <div className={`${labelCls} mb-1`} style={{ color: "var(--gw-text-3)" }}>
+            To order ({toOrder.length})
+          </div>
+          <ul className="mb-4">{toOrder.map((l) => row(l, false))}</ul>
+          <div className="flex flex-wrap gap-3 mb-2">
+            <button
+              onClick={share}
+              className="px-4 py-2 min-h-11 rounded-md text-sm font-mono font-semibold"
+              style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
+            >
+              Share list
+            </button>
+            <button
+              onClick={() => onMark(toOrder.map((l) => l.item.id), true)}
+              className={outline}
+              style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
+            >
+              Mark all ordered
+            </button>
+          </div>
+          {note && (
+            <p role="status" className="text-xs font-mono mb-2" style={{ color: "var(--gw-text-2)" }}>
+              {note}
+            </p>
+          )}
+        </>
+      )}
+
+      {ordered.length > 0 && (
+        <div className="mt-6">
+          <div className={`${labelCls} mb-1`} style={{ color: "var(--gw-text-3)" }}>
+            Already ordered ({ordered.length})
+          </div>
+          <ul>{ordered.map((l) => row(l, true))}</ul>
+          <p className="text-[11px] font-mono mt-2" style={{ color: "var(--gw-text-3)" }}>
+            These clear on their own when you log the delivery.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ShopDashboardProps {
   shop: ShopProfile;
   onLogout: () => void;
@@ -3155,12 +3557,6 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
   // is always "standard" or "pro". It's read-only — see shop-data.ts.
   const tier = shop.tier;
   const isDemoShop = shop.id === DEMO_SHOP_ID;
-  const pageTabs: { id: Page; label: string; Icon: LucideIcon }[] = [
-    { id: "update", label: "Update", Icon: PencilLine },
-    { id: "spreadsheet", label: "Spreadsheet", Icon: Table2 },
-    { id: "recipes", label: "Recipes", Icon: tier === "standard" ? Lock : BookOpen },
-    { id: "alerts", label: "Alerts", Icon: Bell },
-  ];
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   // Perishable expiration batches — NOT related to `mode === "batch"`
@@ -3198,6 +3594,73 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
   // categories they aren't touching this shift without losing any data.
   const [collapsedCategories, setCollapsedCategories] = useState<Set<CategoryId>>(new Set());
 
+  // ---- Owner PIN: locks settings on a shared device (see /api/owner-pin) ----
+  const [pinEnabled, setPinEnabled] = useState(false);
+  const [ownerUnlocked, setOwnerUnlocked] = useState(false);
+  const [pinDialog, setPinDialog] = useState<null | { mode: PinDialogMode; then?: () => void }>(null);
+  const isOwner = !pinEnabled || ownerUnlocked;
+
+  // ---- What to order: items somebody has already ordered ----
+  const [orderMarks, setOrderMarks] = useState<ReadonlySet<number>>(new Set());
+
+  // ---- Undo for a mis-tapped − / + ----
+  const [undo, setUndo] = useState<{ id: number; from: number } | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const toOrderCount = useMemo(() => buildOrderList(items, orderMarks).toOrder.length, [items, orderMarks]);
+  const lockedTab = (id: Page) => !isOwner && (id === "recipes" || id === "alerts");
+  const pageTabs: { id: Page; label: string; Icon: LucideIcon; badge?: number }[] = [
+    { id: "update", label: "Update", Icon: PencilLine },
+    { id: "order", label: "Order", Icon: ShoppingCart, badge: toOrderCount },
+    { id: "spreadsheet", label: "Table", Icon: Table2 },
+    { id: "recipes", label: "Recipes", Icon: tier === "standard" || lockedTab("recipes") ? Lock : BookOpen },
+    { id: "alerts", label: "Alerts", Icon: lockedTab("alerts") ? Lock : Bell },
+  ];
+
+  useEffect(() => {
+    if (isDemoShop) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/owner-pin");
+        const data = (await res.json()) as { enabled?: boolean };
+        if (!cancelled && data.enabled) setPinEnabled(true);
+      } catch {
+        // No PIN status means no lock: the app stays usable.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isDemoShop]);
+
+  // Owner mode ends on its own after ten minutes so a phone left on the counter relocks.
+  useEffect(() => {
+    if (!ownerUnlocked) return;
+    const t = setTimeout(() => setOwnerUnlocked(false), 10 * 60 * 1000);
+    return () => clearTimeout(t);
+  }, [ownerUnlocked]);
+
+  useEffect(
+    () => () => {
+      if (undoTimer.current) clearTimeout(undoTimer.current);
+    },
+    []
+  );
+
+  function requireOwner(action: () => void) {
+    if (isOwner) action();
+    else setPinDialog({ mode: "unlock", then: action });
+  }
+
+  function goToPage(id: Page) {
+    if (lockedTab(id)) {
+      setPinDialog({ mode: "unlock", then: () => setPage(id) });
+      return;
+    }
+    setPage(id);
+  }
+
   function toggleCategory(catId: CategoryId) {
     setCollapsedCategories((prev) => {
       const next = new Set(prev);
@@ -3213,15 +3676,17 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
       setLoading(true);
       setLoadError("");
       try {
-        const [fetchedItems, fetchedMenuItems, fetchedBatches] = await Promise.all([
+        const [fetchedItems, fetchedMenuItems, fetchedBatches, fetchedMarks] = await Promise.all([
           fetchItems(shop.id),
           fetchMenuItems(shop.id),
           fetchBatchesForShop(shop.id),
+          fetchOrderMarks(shop.id),
         ]);
         if (cancelled) return;
         setItems(fetchedItems);
         setMenuItems(fetchedMenuItems);
         setPerishableBatches(fetchedBatches);
+        setOrderMarks(new Set(fetchedMarks));
         setBatchDraft(Object.fromEntries(fetchedItems.map((i) => [i.id, i.count])));
       } catch {
         if (!cancelled) setLoadError("Couldn't load your shop's data. Try refreshing the page.");
@@ -3327,6 +3792,45 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
     }
   }
 
+  // − / + from the item row: same as adjustQuick, plus a few seconds of Undo.
+  // Repeated taps on one item fold into a single undo back to where it started.
+  function tapAdjust(id: number, delta: number) {
+    const current = items.find((i) => i.id === id);
+    if (!current) return;
+    if (Math.max(0, current.count + delta) === current.count) return;
+    setUndo((prev) => ({ id, from: prev && prev.id === id ? prev.from : current.count }));
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    undoTimer.current = setTimeout(() => setUndo(null), 6000);
+    void adjustQuick(id, delta);
+  }
+
+  async function undoLast() {
+    if (!undo) return;
+    const { id, from } = undo;
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setUndo(null);
+    const current = items.find((i) => i.id === id);
+    if (current) await adjustQuick(id, from - current.count);
+  }
+
+  async function markOrdered(ids: number[], marked: boolean) {
+    const before = orderMarks;
+    setOrderMarks((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (marked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+    try {
+      await withSaving(() => saveOrderMarks(shop.id, ids, marked));
+    } catch {
+      setOrderMarks(before);
+      setActionError("Couldn't save that. Try again.");
+    }
+  }
+
   // Add Stock: adds to the current count rather than replacing it — the
   // "just got a shipment in" flow. nativeAmount is already converted to
   // the item's tracked unit by AddStockForm (handles a different package
@@ -3341,6 +3845,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, count: nextCount } : i)));
     setBatchDraft((prev) => ({ ...prev, [id]: nextCount }));
     setAddingStockId(null);
+    if (orderMarks.has(id)) void markOrdered([id], false);
     try {
       await withSaving(() => updateItemCount(id, nextCount));
     } catch {
@@ -3553,9 +4058,11 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
   }
 
   function jumpToEdit(id: number) {
-    setPage("update");
-    setMode("quick");
-    openPanel("edit", id);
+    requireOwner(() => {
+      setPage("update");
+      setMode("quick");
+      openPanel("edit", id);
+    });
   }
 
   async function saveItemEdit(id: number, patch: Omit<InventoryItem, "id">) {
@@ -3778,6 +4285,16 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
               <div className="font-mono text-[11px] uppercase tracking-widest" style={{ color: "var(--gw-text-3)" }}>
                 {pendingSaves > 0 ? "Saving…" : "Signed in"}
               </div>
+              {pinEnabled && (
+                <button
+                  onClick={() => (ownerUnlocked ? setOwnerUnlocked(false) : setPinDialog({ mode: "unlock" }))}
+                  className="font-mono text-[11px] mt-1 mr-0 flex items-center gap-1 ml-auto min-h-8"
+                  style={{ color: ownerUnlocked ? "var(--gw-accent-text)" : "var(--gw-text-2)" }}
+                >
+                  {ownerUnlocked ? <Unlock size={11} /> : <Lock size={11} />}
+                  {ownerUnlocked ? "Owner mode · Lock" : "Owner unlock"}
+                </button>
+              )}
               <button
                 onClick={onLogout}
                 className="font-mono text-xs mt-1 underline underline-offset-2"
@@ -3796,18 +4313,27 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
             className="flex w-full sm:w-fit gap-1 p-1 rounded-lg border"
             style={{ borderColor: "var(--gw-border)", backgroundColor: "var(--gw-surface-sunk)" }}
           >
-            {pageTabs.map(({ id, label, Icon }) => (
+            {pageTabs.map(({ id, label, Icon, badge }) => (
               <button
                 key={id}
-                onClick={() => setPage(id)}
+                onClick={() => goToPage(id)}
                 aria-current={page === id ? "page" : undefined}
-                className="flex-1 sm:flex-none px-1 sm:px-4 py-2 min-h-11 rounded-md font-mono flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 text-[11px] sm:text-sm"
+                className="relative flex-1 sm:flex-none px-1 sm:px-4 py-2 min-h-11 rounded-md font-mono flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 text-[11px] sm:text-sm"
                 style={{
                   backgroundColor: page === id ? "var(--gw-surface-selected)" : "transparent",
                   color: page === id ? "var(--gw-text)" : "var(--gw-text-3)",
                 }}
               >
                 <Icon size={16} /> {label}
+                {badge ? (
+                  <span
+                    className="absolute top-0.5 right-1 sm:static min-w-[16px] h-4 px-1 rounded-full text-[10px] leading-none flex items-center justify-center"
+                    style={{ backgroundColor: "var(--gw-warn)", color: "var(--gw-bg)" }}
+                    aria-label={`${badge} to order`}
+                  >
+                    {badge}
+                  </span>
+                ) : null}
               </button>
             ))}
           </nav>
@@ -3868,12 +4394,14 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
             <ClipboardList size={14} /> Closing Count
           </button>
           <button
-            onClick={() => {
-              setEditingItemId(null);
-              setAddingStockId(null);
-              setEditingBatchesItemId(null);
-              setShowAdd((v) => !v);
-            }}
+            onClick={() =>
+              requireOwner(() => {
+                setEditingItemId(null);
+                setAddingStockId(null);
+                setEditingBatchesItemId(null);
+                setShowAdd((v) => !v);
+              })
+            }
             className="col-span-2 sm:col-span-1 sm:ml-auto px-4 py-2 min-h-11 rounded-full text-sm font-mono flex items-center justify-center border border-dashed"
             style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text-2)" }}
           >
@@ -3946,7 +4474,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
         )}
 
         {items.length === 0 && !showAdd && (
-          <EmptyInventory onAdd={() => setShowAdd(true)} onAlerts={() => setPage("alerts")} />
+          <EmptyInventory onAdd={() => setShowAdd(true)} onAlerts={() => goToPage("alerts")} />
         )}
 
         {/* Category sections */}
@@ -3997,10 +4525,10 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
                         mode={mode}
                         displayMode={displayMode}
                         batches={perishableBatches.filter((b) => b.itemId === item.id)}
-                        onAdjust={adjustQuick}
+                        onAdjust={tapAdjust}
                         onBatchChange={changeBatchDraft}
                         batchValue={batchDraft[item.id] ?? item.count}
-                        onEdit={(id) => openPanel("edit", id)}
+                        onEdit={(id) => requireOwner(() => openPanel("edit", id))}
                         onAddStock={(id) => openPanel("stock", id)}
                         onEditBatches={(id) => openPanel("batches", id)}
                       />
@@ -4043,11 +4571,17 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
         </>
         )}
 
+        {page === "order" && <OrderPage shopName={shopName} items={items} marks={orderMarks} onMark={markOrdered} />}
+
         {page === "spreadsheet" && (
           <SpreadsheetView items={items} displayMode={displayMode} onEdit={jumpToEdit} />
         )}
 
-        {page === "recipes" && tier === "standard" && (
+        {(page === "recipes" || page === "alerts") && !isOwner && (
+          <OwnerOnlyPanel onUnlock={() => setPinDialog({ mode: "unlock" })} />
+        )}
+
+        {page === "recipes" && tier === "standard" && isOwner && (
           <div
             className="rounded-lg border p-8 text-center"
             style={{ borderColor: "var(--gw-border)", backgroundColor: "var(--gw-surface)" }}
@@ -4064,7 +4598,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
               your end-of-shift POS sales to update everything at once.
             </p>
             <button
-              onClick={openBillingPortal}
+              onClick={() => requireOwner(openBillingPortal)}
               disabled={portalLoading}
               className="px-4 py-2 rounded-md text-sm font-mono font-semibold disabled:opacity-60"
               style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
@@ -4074,7 +4608,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
           </div>
         )}
 
-        {page === "recipes" && tier === "pro" && (
+        {page === "recipes" && tier === "pro" && isOwner && (
           <RecipesPage
             shopId={shop.id}
             items={items}
@@ -4090,7 +4624,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
           />
         )}
 
-        {page === "alerts" && (
+        {page === "alerts" && isOwner && (
           <AlertsPage
             shopId={shop.id}
             isDemoShop={isDemoShop}
@@ -4136,6 +4670,16 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
               </div>
             )}
 
+            {!isDemoShop && isOwner && (
+              <button
+                onClick={() => setPinDialog({ mode: "settings" })}
+                className="px-3 py-2 rounded-full text-[11px] font-mono border"
+                style={{ borderColor: "var(--gw-border)", color: "var(--gw-text-3)" }}
+              >
+                {pinEnabled ? "Owner PIN" : "Set an owner PIN"}
+              </button>
+            )}
+
             {isDemoShop ? (
               <div
                 className="px-3 py-2 rounded-full text-[11px] font-mono border"
@@ -4145,7 +4689,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
               </div>
             ) : (
               <button
-                onClick={openBillingPortal}
+                onClick={() => requireOwner(openBillingPortal)}
                 disabled={portalLoading}
                 className="px-3 py-2 rounded-full text-[11px] font-mono border disabled:opacity-60"
                 style={{
@@ -4158,6 +4702,30 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
             )}
           </div>
         </div>
+
+        {pinDialog && (
+          <OwnerPinDialog
+            mode={pinDialog.mode}
+            pinEnabled={pinEnabled}
+            onClose={() => setPinDialog(null)}
+            onUnlocked={() => {
+              const next = pinDialog.then;
+              setOwnerUnlocked(true);
+              setPinDialog(null);
+              next?.();
+            }}
+            onPinChanged={(enabled) => {
+              setPinEnabled(enabled);
+              setOwnerUnlocked(false);
+            }}
+          />
+        )}
+
+        {(() => {
+          const u = undo ? items.find((i) => i.id === undo.id) : undefined;
+          if (!undo || !u || u.count === undo.from) return null;
+          return <UndoBar text={`${u.name}: ${trimNumber(undo.from)} → ${trimNumber(u.count)} ${u.unit}`} onUndo={undoLast} />;
+        })()}
 
         <div className="text-center font-mono text-[11px] uppercase tracking-widest mt-6" style={{ color: "var(--gw-text-3)" }}>
           Text alerts fire automatically when an item crosses into Reorder or Critical

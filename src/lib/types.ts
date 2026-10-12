@@ -8,7 +8,7 @@ export type Status = "good" | "low" | "critical";
 // 'none' (see supabase/005_paid_tiers.sql); there is no free tier anymore.
 export type Tier = "none" | "standard" | "pro";
 export type Mode = "quick" | "batch";
-export type Page = "update" | "spreadsheet" | "recipes" | "alerts";
+export type Page = "update" | "order" | "spreadsheet" | "recipes" | "alerts";
 // How quantities are shown across the dashboard — "count" is the raw
 // number of stocking units (e.g. "1.69 bags"); "measurement" converts
 // through unitSize/unitMeasure into a total remaining amount (e.g. "27 oz")

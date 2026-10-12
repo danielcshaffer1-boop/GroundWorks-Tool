@@ -1901,6 +1901,9 @@ function SquareModifierRow({
   const [toId, setToId] = useState<number>(first?.type === "swap" ? first.toItemId : (sized[1]?.id ?? sized[0]?.id ?? 0));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // What the row shows once saved, so it doesn't flash the old text while the
+  // list reloads.
+  const [shown, setShown] = useState(modifier.effects);
 
   async function save() {
     let effects: SquareEffect[];
@@ -1935,6 +1938,7 @@ function SquareModifierRow({
         setError(data?.error || "Couldn't save that.");
         return;
       }
+      setShown(effects);
       setEditing(false);
       onSaved();
     } catch {
@@ -1966,9 +1970,9 @@ function SquareModifierRow({
           <>
             <span
               className="text-xs font-mono"
-              style={{ color: modifier.effects === null ? "var(--gw-warn)" : "var(--gw-text-2)" }}
+              style={{ color: shown === null ? "var(--gw-warn)" : "var(--gw-text-2)" }}
             >
-              {effectSummary(modifier.effects, items)}
+              {effectSummary(shown, items)}
             </span>
             <button
               onClick={() => setEditing(true)}
@@ -2068,7 +2072,7 @@ function SquareModifierRow({
           >
             {saving ? "Saving…" : "Save"}
           </button>
-          {modifier.effects !== null && (
+          {shown !== null && (
             <button
               onClick={() => setEditing(false)}
               className="text-xs font-mono px-2 min-h-11"

@@ -479,24 +479,32 @@ function AddItemForm({ onAdd, onCancel }: AddItemFormProps) {
         New Stock Item
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-        <input
-          placeholder="Item name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="col-span-2 rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-          style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
-        />
-        <input
-          placeholder="Stocking unit (e.g. carton, bag)"
-          value={unit}
-          onChange={(e) => setUnit(e.target.value)}
-          className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-          style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
-        />
+        <label className="flex flex-col gap-1 text-xs font-mono sm:col-span-2" style={{ color: "var(--gw-text-2)" }}>
+          Item name
+          <input
+            placeholder="e.g. Whole Milk"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="rounded-md border px-3 py-2 min-h-11 bg-transparent focus:outline-none"
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
+          Counted in (carton, bag, bottle…)
+          <input
+            placeholder="e.g. carton"
+            value={unit}
+            onChange={(e) => setUnit(e.target.value)}
+            className="rounded-md border px-3 py-2 min-h-11 bg-transparent focus:outline-none"
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-mono sm:col-span-2" style={{ color: "var(--gw-text-2)" }}>
+          Category
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value as CategoryId)}
-          className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+          className="rounded-md border px-3 py-2 min-h-11 bg-transparent focus:outline-none"
           style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
         >
           {CATEGORIES.map((c) => (
@@ -505,27 +513,32 @@ function AddItemForm({ onAdd, onCancel }: AddItemFormProps) {
             </option>
           ))}
         </select>
+        </label>
         <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
           Starting count
           <input
             type="number"
+            inputMode="decimal"
+            step="any"
             value={count}
             // Blank stays blank instead of snapping to 0 — forcing "0" into
             // a controlled number input is what causes the next keystroke
             // to land in front of it (typing "5" against a displayed "0"
             // gives "05"). Resolved back to 0 only at submit time.
-            onChange={(e) => setCount(e.target.value === "" ? "" : parseInt(e.target.value, 10))}
-            className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+            onChange={(e) => setCount(e.target.value === "" ? "" : parseFloat(e.target.value))}
+            className="rounded-md border px-3 py-2 min-h-11 bg-transparent focus:outline-none"
             style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
-          Reorder threshold
+          Reorder level
           <input
             type="number"
+            inputMode="decimal"
+            step="any"
             value={threshold}
-            onChange={(e) => setThreshold(e.target.value === "" ? "" : parseInt(e.target.value, 10))}
-            className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+            onChange={(e) => setThreshold(e.target.value === "" ? "" : parseFloat(e.target.value))}
+            className="rounded-md border px-3 py-2 min-h-11 bg-transparent focus:outline-none"
             style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
           />
         </label>
@@ -537,7 +550,7 @@ function AddItemForm({ onAdd, onCancel }: AddItemFormProps) {
             placeholder="e.g. 32"
             value={unitSize}
             onChange={(e) => setUnitSize(e.target.value)}
-            className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+            className="rounded-md border px-3 py-2 min-h-11 bg-transparent focus:outline-none"
             style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
           />
         </label>
@@ -547,7 +560,7 @@ function AddItemForm({ onAdd, onCancel }: AddItemFormProps) {
             placeholder="e.g. oz"
             value={unitMeasure}
             onChange={(e) => setUnitMeasure(e.target.value)}
-            className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+            className="rounded-md border px-3 py-2 min-h-11 bg-transparent focus:outline-none"
             style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
           />
         </label>
@@ -611,24 +624,32 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
         Edit {item.name}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-        <input
-          placeholder="Item name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="col-span-2 rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-          style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
-        />
-        <input
-          placeholder="Stocking unit (e.g. carton, bag)"
-          value={unit}
-          onChange={(e) => setUnit(e.target.value)}
-          className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
-          style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
-        />
+        <label className="flex flex-col gap-1 text-xs font-mono sm:col-span-2" style={{ color: "var(--gw-text-2)" }}>
+          Item name
+          <input
+            placeholder="e.g. Whole Milk"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="rounded-md border px-3 py-2 min-h-11 bg-transparent focus:outline-none"
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
+          Counted in (carton, bag, bottle…)
+          <input
+            placeholder="e.g. carton"
+            value={unit}
+            onChange={(e) => setUnit(e.target.value)}
+            className="rounded-md border px-3 py-2 min-h-11 bg-transparent focus:outline-none"
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-mono sm:col-span-2" style={{ color: "var(--gw-text-2)" }}>
+          Category
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value as CategoryId)}
-          className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+          className="rounded-md border px-3 py-2 min-h-11 bg-transparent focus:outline-none"
           style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
         >
           {CATEGORIES.map((c) => (
@@ -637,26 +658,31 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
             </option>
           ))}
         </select>
+        </label>
         <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
           Count
           <input
             type="number"
+            inputMode="decimal"
+            step="any"
             value={count}
             // Blank stays blank instead of snapping to 0 (see AddItemForm)
             // — resolved back to the item's real count only at save time,
             // never destructively defaulting a real item's stock to zero.
-            onChange={(e) => setCount(e.target.value === "" ? "" : parseInt(e.target.value, 10))}
-            className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+            onChange={(e) => setCount(e.target.value === "" ? "" : parseFloat(e.target.value))}
+            className="rounded-md border px-3 py-2 min-h-11 bg-transparent focus:outline-none"
             style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
-          Reorder threshold
+          Reorder level
           <input
             type="number"
+            inputMode="decimal"
+            step="any"
             value={threshold}
-            onChange={(e) => setThreshold(e.target.value === "" ? "" : parseInt(e.target.value, 10))}
-            className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+            onChange={(e) => setThreshold(e.target.value === "" ? "" : parseFloat(e.target.value))}
+            className="rounded-md border px-3 py-2 min-h-11 bg-transparent focus:outline-none"
             style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
           />
         </label>
@@ -668,7 +694,7 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
             placeholder="e.g. 32"
             value={unitSize}
             onChange={(e) => setUnitSize(e.target.value)}
-            className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+            className="rounded-md border px-3 py-2 min-h-11 bg-transparent focus:outline-none"
             style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
           />
         </label>
@@ -678,12 +704,12 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
             placeholder="e.g. oz"
             value={unitMeasure}
             onChange={(e) => setUnitMeasure(e.target.value)}
-            className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+            className="rounded-md border px-3 py-2 min-h-11 bg-transparent focus:outline-none"
             style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
           />
         </label>
       </div>
-      <div className="flex gap-2 justify-between">
+      <div className="flex flex-wrap gap-2 justify-between">
         <button
           onClick={() => onDelete(item.id)}
           className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-1.5 border"
@@ -691,7 +717,7 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
         >
           <Trash2 size={14} /> Delete
         </button>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={onCancel}
             className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-1.5 border"
@@ -712,7 +738,7 @@ function EditItemForm({ item, onSave, onCancel, onDelete }: EditItemFormProps) {
                 unitMeasure: unitMeasure.trim() || null,
               });
             }}
-            className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-1.5 font-semibold"
+            className="whitespace-nowrap px-4 py-2 min-h-11 rounded-md text-sm font-mono flex items-center gap-1.5 font-semibold"
             style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
           >
             <Check size={14} /> Save Changes
@@ -3260,12 +3286,14 @@ function OwnerPinDialog({
   onClose,
   onUnlocked,
   onPinChanged,
+  onForgot,
 }: {
   mode: PinDialogMode;
   pinEnabled: boolean;
   onClose: () => void;
   onUnlocked: () => void;
   onPinChanged: (enabled: boolean) => void;
+  onForgot: () => void;
 }) {
   const [pin, setPin] = useState("");
   const [password, setPassword] = useState("");
@@ -3316,7 +3344,7 @@ function OwnerPinDialog({
       onPinChanged(true);
       setPin("");
       setPassword("");
-      setDone("Owner PIN saved. Settings are locked until someone enters it.");
+      setDone("Owner PIN saved. You stay in owner mode for 10 minutes, then the PIN is needed.");
     }
   }
 
@@ -3386,6 +3414,14 @@ function OwnerPinDialog({
                 Cancel
               </button>
             </div>
+            <button
+              type="button"
+              onClick={onForgot}
+              className="mt-3 text-xs font-mono underline underline-offset-2 min-h-11"
+              style={{ color: "var(--gw-text-2)" }}
+            >
+              Forgot the PIN? Reset it with your account password
+            </button>
           </form>
         ) : (
           <form onSubmit={savePin}>
@@ -4839,6 +4875,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
 
         {pinDialog && (
           <OwnerPinDialog
+            key={pinDialog.mode}
             mode={pinDialog.mode}
             pinEnabled={pinEnabled}
             onClose={() => setPinDialog(null)}
@@ -4848,9 +4885,11 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
               setPinDialog(null);
               next?.();
             }}
+            onForgot={() => setPinDialog({ mode: "settings" })}
             onPinChanged={(enabled) => {
               setPinEnabled(enabled);
-              setOwnerUnlocked(false);
+              // Whoever just proved the account password is the owner: keep them unlocked.
+              setOwnerUnlocked(enabled);
             }}
           />
         )}

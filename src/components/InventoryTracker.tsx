@@ -44,6 +44,7 @@ import type {
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { buildOrderList, orderText } from "@/lib/order-list";
+import { formatPhone, normalizePhone } from "@/lib/phone";
 import {
   parseSalesText,
   matchRecipe,
@@ -123,6 +124,12 @@ function trimNumber(n: number): string {
   return (Math.round(n * 100) / 100).toString();
 }
 
+// "gallon" -> "gallons" for a sentence like "How many gallons came in?". Units are
+// whatever the shop typed, so leave anything already ending in s alone.
+function manyOf(unit: string): string {
+  return unit.endsWith("s") ? unit : `${unit}s`;
+}
+
 function displayQuantity(item: InventoryItem, mode: DisplayMode, count: number): { amount: string; label: string } {
   if (mode === "measurement" && item.unitSize && item.unitMeasure) {
     return { amount: trimNumber(count * item.unitSize), label: item.unitMeasure };
@@ -178,6 +185,90 @@ function StatusStamp({ status }: { status: Status }) {
 
 // ---- Item row ---------------------------------------------------------
 
+// The number between − and +. Tap it to type an exact count (2.5 gallons, or a
+// whole recount) instead of tapping + many times. In Measure view you type the
+// total in oz/pumps/cups and it's converted back to the item's own unit.
+function QuickCount({
+  item,
+  qty,
+  showingMeasurement,
+  onSet,
+}: {
+  item: InventoryItem;
+  qty: { amount: string; label: string };
+  showingMeasurement: boolean;
+  onSet: (id: number, nativeCount: number) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const cancelled = useRef(false);
+
+  function commit() {
+    setEditing(false);
+    if (cancelled.current) {
+      cancelled.current = false;
+      return;
+    }
+    const parsed = parseFloat(draft);
+    if (draft.trim() === "" || Number.isNaN(parsed) || parsed < 0) return;
+    const native = showingMeasurement && item.unitSize ? parsed / item.unitSize : parsed;
+    if (Math.abs(native - item.count) < 1e-9) return;
+    onSet(item.id, native);
+  }
+
+  if (editing) {
+    return (
+      <div className="font-mono text-center" style={{ color: "var(--gw-text)", minWidth: 48 }}>
+        <input
+          type="number"
+          inputMode="decimal"
+          step="any"
+          min={0}
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onFocus={(e) => e.currentTarget.select()}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+            if (e.key === "Escape") {
+              cancelled.current = true;
+              e.currentTarget.blur();
+            }
+          }}
+          aria-label={`Type the count for ${item.name}`}
+          className="w-12 px-0 text-lg text-center rounded-md border py-1 bg-transparent focus:outline-none"
+          style={{ borderColor: "var(--gw-accent)", color: "var(--gw-text)" }}
+        />
+        <div className="text-[11px] uppercase tracking-wide" style={{ color: "var(--gw-text-3)" }}>
+          {qty.label}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setDraft(qty.amount);
+        setEditing(true);
+      }}
+      aria-label={`Type a count for ${item.name}`}
+      className="font-mono text-center min-h-11"
+      style={{ color: "var(--gw-text)", minWidth: 48 }}
+    >
+      <div className="text-lg leading-tight underline decoration-dotted underline-offset-4" style={{ textDecorationColor: "var(--gw-text-3)" }}>
+        {qty.amount}
+      </div>
+      <div className="text-[11px] uppercase tracking-wide" style={{ color: "var(--gw-text-3)" }}>
+        {qty.label}
+      </div>
+    </button>
+  );
+}
+
+
 // A small action under an item with its name written out (an icon alone makes a
 // barista guess), and a tap target big enough for a gloved or wet thumb.
 function RowAction({
@@ -220,6 +311,7 @@ interface ItemRowProps {
   displayMode: DisplayMode;
   batches: Batch[];
   onAdjust: (id: number, delta: number) => void;
+  onSetCount: (id: number, nativeCount: number) => void;
   onBatchChange: (id: number, value: number | "") => void;
   batchValue: number | "";
   onEdit: (id: number) => void;
@@ -233,6 +325,7 @@ function ItemRow({
   displayMode,
   batches,
   onAdjust,
+  onSetCount,
   onBatchChange,
   batchValue,
   onEdit,
@@ -303,10 +396,7 @@ function ItemRow({
             >
               <Minus size={16} />
             </button>
-            <div className="font-mono text-center" style={{ color: "var(--gw-text)", minWidth: 48 }}>
-              <div className="text-lg leading-tight">{qty.amount}</div>
-              <div className="text-[11px] uppercase tracking-wide" style={{ color: "var(--gw-text-3)" }}>{qty.label}</div>
-            </div>
+            <QuickCount item={item} qty={qty} showingMeasurement={showingMeasurement} onSet={onSetCount} />
             <button
               onClick={() => onAdjust(item.id, 1)}
               className="w-11 h-11 rounded-full flex items-center justify-center border transition-colors hover:brightness-125 shrink-0"
@@ -653,15 +743,19 @@ function todayISO(): string {
 function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
   const [qty, setQty] = useState<number | "">(1);
   const [size, setSize] = useState(item.unitSize === null ? "" : String(item.unitSize));
-  // Perishables only — "individual units" behaves exactly as before
-  // (plain count bump); "batch" also creates a tracked batch row with an
-  // expiration date, consumed FIFO ahead of the untracked pool.
+  // The size of each delivered unit is almost always the usual one, so the
+  // field stays out of the way unless this delivery is a different size.
+  const [showSize, setShowSize] = useState(false);
+  // Perishables only — "just add" behaves exactly as before (plain count
+  // bump); "with expiry date" also creates a tracked batch row, used oldest
+  // expiry first ahead of the untracked pool.
   const [asBatch, setAsBatch] = useState(false);
   const [expiresOn, setExpiresOn] = useState(todayISO());
   const [label, setLabel] = useState("");
 
   const isPerishable = item.category === "perishable";
   const hasSize = item.unitSize !== null && !!item.unitMeasure;
+  const one = item.unit.replace(/s$/, "");
   const qtyNum = qty === "" ? 0 : qty;
   const sizeNum = parseFloat(size) || 0;
   const sizeDiffers = hasSize && sizeNum > 0 && sizeNum !== item.unitSize;
@@ -671,106 +765,118 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
   return (
     <div className="rounded-lg border p-5 mb-6" style={{ borderColor: "var(--gw-border-strong)", backgroundColor: "var(--gw-surface-raised)" }}>
       <div className="font-mono text-xs uppercase tracking-widest mb-1" style={{ color: "var(--gw-accent-text)" }}>
-        Add Stock — {item.name}
+        Delivery — {item.name}
       </div>
       <p className="text-xs mb-4" style={{ color: "var(--gw-text-2)" }}>
-        Just picked some up? Say how many you&apos;re adding and it&apos;ll do the math for you.
+        Got a delivery? Enter how many {manyOf(item.unit)} came in.
       </p>
 
       {isPerishable && (
         <div className="flex items-center gap-1 p-1 rounded-lg border overflow-x-auto max-w-full mb-3" style={{ borderColor: "var(--gw-border)" }}>
           <button
             onClick={() => setAsBatch(false)}
-            className="px-3 py-1.5 rounded-md text-xs font-mono transition-colors"
+            className="px-3 py-2 min-h-11 rounded-md text-xs font-mono transition-colors"
             style={{
               backgroundColor: !asBatch ? "var(--gw-surface-selected)" : "transparent",
               color: !asBatch ? "var(--gw-text)" : "var(--gw-text-3)",
             }}
           >
-            Individual units
+            Just add to stock
           </button>
           <button
             onClick={() => setAsBatch(true)}
-            className="px-3 py-1.5 rounded-md text-xs font-mono transition-colors flex items-center gap-1.5"
+            className="px-3 py-2 min-h-11 rounded-md text-xs font-mono transition-colors flex items-center gap-1.5"
             style={{
               backgroundColor: asBatch ? "var(--gw-surface-selected)" : "transparent",
               color: asBatch ? "var(--gw-text)" : "var(--gw-text-3)",
             }}
           >
-            <CalendarClock size={12} /> New batch
+            <CalendarClock size={12} /> Add with expiry date
           </button>
         </div>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
-          Adding how many {item.unit}?
+          How many {manyOf(item.unit)} came in?
           <input
             type="number"
+            inputMode="decimal"
             min={0}
             step="0.1"
             autoFocus
             value={qty}
             onChange={(e) => setQty(e.target.value === "" ? "" : parseFloat(e.target.value))}
-            className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+            className="rounded-md border px-3 py-2 min-h-11 bg-transparent focus:outline-none"
             style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
           />
         </label>
-        {hasSize && (
+        {hasSize && showSize && (
           <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
-            Size of each ({item.unitMeasure})
+            Each {one} holds how many {item.unitMeasure}?
             <input
               type="number"
+              inputMode="decimal"
               min={0}
               step="0.1"
               value={size}
               onChange={(e) => setSize(e.target.value)}
-              className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+              className="rounded-md border px-3 py-2 min-h-11 bg-transparent focus:outline-none"
               style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
             />
           </label>
         )}
         {asBatch && (
           <label className="flex flex-col gap-1 text-xs font-mono col-span-2" style={{ color: "var(--gw-text-2)" }}>
-            This batch expires on
+            Expires on
             <input
               type="date"
               value={expiresOn}
               onChange={(e) => setExpiresOn(e.target.value)}
-              className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+              className="rounded-md border px-3 py-2 min-h-11 bg-transparent focus:outline-none"
               style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
             />
           </label>
         )}
         {asBatch && (
           <label className="flex flex-col gap-1 text-xs font-mono col-span-2" style={{ color: "var(--gw-text-2)" }}>
-            Label (optional)
+            Note (optional)
             <input
               type="text"
               maxLength={60}
-              placeholder="e.g. Sysco delivery, walk-in, lot #4021"
+              placeholder="e.g. Tuesday delivery, walk-in"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+              className="rounded-md border px-3 py-2 min-h-11 bg-transparent focus:outline-none"
               style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
             />
           </label>
         )}
       </div>
+      {hasSize && !showSize && (
+        <button
+          type="button"
+          onClick={() => setShowSize(true)}
+          className="text-xs font-mono underline underline-offset-2 mb-3 min-h-11"
+          style={{ color: "var(--gw-text-2)" }}
+        >
+          Different size this time?
+        </button>
+      )}
       {sizeDiffers && (
         <p className="text-[11px] font-mono mb-3" style={{ color: "var(--gw-warn)" }}>
-          Different size than what you track (1 {item.unit.replace(/s$/, "")} = {item.unitSize} {item.unitMeasure}) —
-          converting: adds {trimNumber(nativeAdd)} {item.unit}.
+          That&apos;s a different size than usual (usual: 1 {one} = {item.unitSize} {item.unitMeasure}), so this adds{" "}
+          {trimNumber(nativeAdd)} {item.unit}.
         </p>
       )}
       <p className="text-xs font-mono mb-4" style={{ color: "var(--gw-ok)" }}>
         New total: {trimNumber(item.count + nativeAdd)} {item.unit}
-        {asBatch && " · tracked as its own batch, consumed first"}
+        {asBatch && " · the oldest expiry gets used first"}
       </p>
       <div className="flex gap-2 justify-end">
         <button
           onClick={onCancel}
-          className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-1.5 border"
+          className="px-4 py-2 min-h-11 rounded-md text-sm font-mono flex items-center gap-1.5 border"
           style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text-2)" }}
         >
           <X size={14} /> Cancel
@@ -781,7 +887,7 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
             onAdd(item.id, nativeAdd, asBatch ? expiresOn : undefined, asBatch ? label : undefined)
           }
           disabled={!canSubmit}
-          className="px-4 py-2 rounded-md text-sm font-mono flex items-center gap-1.5 font-semibold disabled:opacity-40"
+          className="px-4 py-2 min-h-11 rounded-md text-sm font-mono flex items-center gap-1.5 font-semibold disabled:opacity-40"
           style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
         >
           <PackagePlus size={14} /> Add {trimNumber(qtyNum)} {item.unit}
@@ -859,7 +965,7 @@ function BatchEditorRow({ batch, unit, isNext, onSave, onDelete }: BatchEditorRo
             className="text-[11px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded"
             style={{ color: "var(--gw-ok)", border: "1px solid var(--gw-ok)" }}
           >
-            Used next
+            Use first
           </span>
         )}
         <div className="flex items-center gap-1 ml-auto">
@@ -872,7 +978,7 @@ function BatchEditorRow({ batch, unit, isNext, onSave, onDelete }: BatchEditorRo
               Save
             </button>
           )}
-          <button onClick={onDelete} style={{ color: "var(--gw-text-3)" }} aria-label="Delete batch">
+          <button onClick={onDelete} style={{ color: "var(--gw-text-3)" }} aria-label="Delete expiry date">
             <Trash2 size={14} />
           </button>
         </div>
@@ -881,7 +987,7 @@ function BatchEditorRow({ batch, unit, isNext, onSave, onDelete }: BatchEditorRo
         <input
           type="text"
           maxLength={60}
-          placeholder="Add a label — e.g. Sysco delivery, walk-in, lot #4021"
+          placeholder="Add a note, e.g. Tuesday delivery"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           className="flex-1 min-w-0 rounded-md border px-2 py-1.5 text-xs font-mono bg-transparent focus:outline-none"
@@ -916,20 +1022,19 @@ function BatchEditor({ item, batches, onAddBatch, onEditBatch, onDeleteBatch, on
     <div className="rounded-lg border p-5 mb-6" style={{ borderColor: "var(--gw-border-strong)", backgroundColor: "var(--gw-surface-raised)" }}>
       <div className="flex items-center justify-between mb-1">
         <div className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--gw-accent-text)" }}>
-          Batches — {item.name}
+          Expiry dates — {item.name}
         </div>
-        <button onClick={onClose} style={{ color: "var(--gw-text-2)" }} aria-label="Close batch editor">
+        <button onClick={onClose} style={{ color: "var(--gw-text-2)" }} aria-label="Close expiry dates">
           <X size={16} />
         </button>
       </div>
       <p className="text-xs mb-4" style={{ color: "var(--gw-text-2)" }}>
-        Oldest-expiring batch is used first automatically as stock gets consumed — Quick Log, Closing Count, and
-        recipe sales deductions all draw from it before touching untracked stock.
+        Each delivery can have its own expiry date. Whatever expires first is used up first, automatically.
       </p>
 
       {batches.length === 0 ? (
         <p className="text-sm mb-4" style={{ color: "var(--gw-text-2)" }}>
-          No tracked batches yet — all {trimNumber(item.count)} {item.unit} is untracked stock.
+          No expiry dates tracked yet. Add one when a delivery comes in.
         </p>
       ) : (
         <div className="flex flex-col gap-2 mb-2">
@@ -947,17 +1052,17 @@ function BatchEditor({ item, batches, onAddBatch, onEditBatch, onDeleteBatch, on
       )}
       {batches.length > 0 && untracked > 0 && (
         <p className="text-[11px] font-mono mb-4" style={{ color: "var(--gw-text-3)" }}>
-          + {trimNumber(untracked)} {item.unit} untracked (no expiration recorded)
+          + {trimNumber(untracked)} {item.unit} with no expiry date
         </p>
       )}
 
       <div className="border-t pt-4 mt-2" style={{ borderColor: "var(--gw-border)" }}>
         <div className="font-mono text-[11px] uppercase tracking-widest mb-2" style={{ color: "var(--gw-text-2)" }}>
-          Add another batch
+          Add an expiry date
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="flex flex-col gap-1 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
-            Quantity ({item.unit})
+            How many {manyOf(item.unit)}?
             <input
               type="number"
               min={0}
@@ -979,11 +1084,11 @@ function BatchEditor({ item, batches, onAddBatch, onEditBatch, onDeleteBatch, on
             />
           </label>
           <label className="flex flex-col gap-1 text-xs font-mono col-span-1 sm:col-span-2" style={{ color: "var(--gw-text-2)" }}>
-            Label (optional)
+            Note (optional)
             <input
               type="text"
               maxLength={60}
-              placeholder="e.g. Sysco delivery, walk-in, lot #4021"
+              placeholder="e.g. Tuesday delivery, walk-in"
               value={newLabel}
               onChange={(e) => setNewLabel(e.target.value)}
               className="rounded-md border px-3 py-2 bg-transparent focus:outline-none"
@@ -996,7 +1101,7 @@ function BatchEditor({ item, batches, onAddBatch, onEditBatch, onDeleteBatch, on
             any untracked stock), never carved out of what's already there. */}
         {newQty !== "" && newQty > 0 && (
           <p className="text-xs font-mono mt-3" style={{ color: "var(--gw-ok)" }}>
-            New total: {trimNumber(item.count + newQty)} {item.unit} · tracked as its own batch, consumed first
+            This adds {trimNumber(newQty)} {item.unit}. New total: {trimNumber(item.count + newQty)} {item.unit}.
           </p>
         )}
         <div className="flex justify-end mt-3">
@@ -1011,7 +1116,7 @@ function BatchEditor({ item, batches, onAddBatch, onEditBatch, onDeleteBatch, on
             className="px-4 py-2 rounded-md text-sm font-mono font-semibold flex items-center gap-1.5 disabled:opacity-40"
             style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
           >
-            <Plus size={14} /> Add Batch
+            <Plus size={14} /> Add
           </button>
         </div>
       </div>
@@ -2492,11 +2597,6 @@ function RecipesPage({
 
 // ---- Restock alerts ---------------------------------------------------------
 
-// Loose E.164 check (+ then 7-15 digits, no leading 0) — not exhaustive,
-// but catches "forgot the +" / "typed letters" before it ever reaches
-// Twilio and fails silently from the shop owner's point of view.
-const PHONE_PATTERN = /^\+[1-9]\d{6,14}$/;
-
 interface AlertsPageProps {
   shopId: string;
   isDemoShop?: boolean;
@@ -2533,11 +2633,13 @@ function AlertsPage({ shopId, isDemoShop = false, expirationAlertDays, onChangeE
   }, [shopId]);
 
   async function handleAdd() {
-    const phone = newPhone.trim();
-    if (!phone || !consentChecked) return;
+    if (!newPhone.trim() || !consentChecked) return;
     setActionError("");
-    if (!PHONE_PATTERN.test(phone)) {
-      setActionError("Enter a phone number in international format, e.g. +15551234567.");
+    // Any normal way of typing a US number works; it's stored in the international
+    // form Twilio needs. Outside the US, start with + and the country code.
+    const phone = normalizePhone(newPhone);
+    if (!phone) {
+      setActionError("That doesn't look like a phone number. Try (555) 234-5678, or start with + and the country code if it's outside the US.");
       return;
     }
     setAdding(true);
@@ -2625,7 +2727,7 @@ function AlertsPage({ shopId, isDemoShop = false, expirationAlertDays, onChangeE
               <input
                 type="tel"
                 disabled={isDemoShop}
-                placeholder="+15551234567"
+                placeholder="(555) 234-5678"
                 value={newPhone}
                 onChange={(e) => setNewPhone(e.target.value)}
                 className="rounded-md border px-3 py-2 font-mono bg-transparent focus:outline-none"
@@ -2699,7 +2801,7 @@ function AlertsPage({ shopId, isDemoShop = false, expirationAlertDays, onChangeE
                   style={{ borderColor: "var(--gw-border)" }}
                 >
                   <span className="font-mono text-sm" style={{ color: "var(--gw-text)" }}>
-                    {r.phone}
+                    {formatPhone(r.phone)}
                   </span>
                   <button onClick={() => handleRemove(r.id)} style={{ color: "var(--gw-text-3)" }} aria-label="Remove">
                     <Trash2 size={14} />
@@ -3804,6 +3906,13 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
     void adjustQuick(id, delta);
   }
 
+  // Typing an exact count: the same change (and the same Undo) as tapping − or + that many times.
+  function tapSet(id: number, value: number) {
+    const current = items.find((i) => i.id === id);
+    if (!current) return;
+    tapAdjust(id, Math.round((value - current.count) * 10000) / 10000);
+  }
+
   async function undoLast() {
     if (!undo) return;
     const { id, from } = undo;
@@ -4259,7 +4368,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
       className="min-h-screen w-full"
       style={{ backgroundColor: "var(--gw-bg)", fontFamily: "var(--font-sans)" }}
     >
-      <div className="max-w-2xl md:max-w-4xl mx-auto px-5 py-10">
+      <div className={`max-w-2xl md:max-w-4xl mx-auto px-5 py-10 ${mode === "batch" && page === "update" ? "pb-28" : ""}`}>
         {/* Header */}
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>
@@ -4411,7 +4520,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
 
         {mode === "quick" && items.length > 0 && !showAdd && (
           <p className="text-xs -mt-3 mb-5" style={{ color: "var(--gw-text-3)" }}>
-            Tap − when you use something up, + when you restock.
+            Tap − when you use something up, + when you restock. Tap the number to type an exact count.
           </p>
         )}
 
@@ -4526,6 +4635,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
                         displayMode={displayMode}
                         batches={perishableBatches.filter((b) => b.itemId === item.id)}
                         onAdjust={tapAdjust}
+                        onSetCount={tapSet}
                         onBatchChange={changeBatchDraft}
                         batchValue={batchDraft[item.id] ?? item.count}
                         onEdit={(id) => requireOwner(() => openPanel("edit", id))}
@@ -4702,6 +4812,30 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
             )}
           </div>
         </div>
+
+        {mode === "batch" && page === "update" && (() => {
+          const changed = items.filter((i) => {
+            const d = batchDraft[i.id];
+            return d !== undefined && d !== "" && d !== i.count;
+          }).length;
+          return (
+            <div
+              className="fixed inset-x-0 bottom-0 z-30 border-t px-4 py-3 flex items-center justify-center gap-4"
+              style={{ borderColor: "var(--gw-border-strong)", backgroundColor: "var(--gw-surface-raised)" }}
+            >
+              <span className="text-sm font-mono" style={{ color: "var(--gw-text-2)" }}>
+                {changed === 0 ? "No counts changed yet" : `${changed} count${changed === 1 ? "" : "s"} changed`}
+              </span>
+              <button
+                onClick={saveBatch}
+                className="px-4 py-2 min-h-11 rounded-md text-sm font-mono font-semibold flex items-center gap-1.5"
+                style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
+              >
+                <Check size={14} /> Save Closing Count
+              </button>
+            </div>
+          );
+        })()}
 
         {pinDialog && (
           <OwnerPinDialog

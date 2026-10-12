@@ -3834,17 +3834,21 @@ interface AdminShopDetailProps {
   shop: ShopSummary;
   onBack: () => void;
   onTierChanged: (shopId: string, tier: Tier) => void;
+  onDeleted: (shopId: string) => void;
 }
 
 const TIER_OPTIONS: Tier[] = ["none", "standard", "pro"];
 
-function AdminShopDetail({ shop, onBack, onTierChanged }: AdminShopDetailProps) {
+function AdminShopDetail({ shop, onBack, onTierChanged, onDeleted }: AdminShopDetailProps) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [tierUpdating, setTierUpdating] = useState(false);
   const [tierError, setTierError] = useState("");
+  const [confirmName, setConfirmName] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -3895,6 +3899,29 @@ function AdminShopDetail({ shop, onBack, onTierChanged }: AdminShopDetailProps) 
 
   const hasActiveSubscription =
     !!shop.stripeSubscriptionId && (shop.subscriptionStatus === "active" || shop.subscriptionStatus === "trialing");
+
+  async function deleteShop() {
+    if (deleting || confirmName.trim() !== shop.name) return;
+    setDeleteError("");
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/admin/delete-shop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shopId: shop.id, confirmName }),
+      });
+      const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+      if (!res.ok || !data?.ok) {
+        setDeleteError(data?.error || "Couldn't delete this shop.");
+        return;
+      }
+      onDeleted(shop.id);
+    } catch {
+      setDeleteError("Couldn't delete this shop. Try again.");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
     <div>
@@ -3951,6 +3978,46 @@ function AdminShopDetail({ shop, onBack, onTierChanged }: AdminShopDetailProps) 
             ? `This shop has an active Stripe subscription (${shop.subscriptionStatus}) — an override here can get replaced the next time Stripe sends a billing event (renewal, plan change, etc.). Use the shop's own Stripe subscription if you need a permanent change.`
             : "This shop has no active Stripe subscription, so an override here sticks until they ever subscribe through Stripe."}
         </p>
+      </div>
+
+      <div className="rounded-lg border p-4 mb-8" style={{ borderColor: "var(--gw-danger-text)" }}>
+        <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: "var(--gw-danger-text)" }}>
+          Delete shop
+        </div>
+        {hasActiveSubscription ? (
+          <p className="text-sm" style={{ color: "var(--gw-text-2)" }}>
+            This shop has a live Stripe subscription ({shop.subscriptionStatus}). Cancel it in Stripe first, then come back to delete the shop.
+          </p>
+        ) : (
+          <>
+            <p className="text-sm mb-3" style={{ color: "var(--gw-text-2)" }}>
+              Permanently deletes this shop, its login, inventory, recipes, alert numbers and Square connection. This can&apos;t be undone. Type the shop name to confirm.
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                value={confirmName}
+                onChange={(e) => setConfirmName(e.target.value)}
+                placeholder={shop.name}
+                aria-label="Type the shop name to confirm"
+                className="flex-1 min-w-[10rem] rounded-md border px-3 py-2 bg-transparent focus:outline-none"
+                style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
+              />
+              <button
+                onClick={deleteShop}
+                disabled={deleting || confirmName.trim() !== shop.name}
+                className="px-4 py-2 min-h-11 rounded-md text-sm font-mono font-semibold border disabled:opacity-40"
+                style={{ borderColor: "var(--gw-danger-text)", color: "var(--gw-danger-text)" }}
+              >
+                {deleting ? "Deleting…" : "Delete shop"}
+              </button>
+            </div>
+          </>
+        )}
+        {deleteError && (
+          <div role="alert" className="text-xs font-mono mt-2" style={{ color: "var(--gw-danger-text)" }}>
+            {deleteError}
+          </div>
+        )}
       </div>
 
       {loading && (
@@ -4087,6 +4154,11 @@ function AdminDashboard({ onLogout }: AdminDashboardProps) {
     setShops((prev) => prev.map((s) => (s.id === shopId ? { ...s, tier } : s)));
   }
 
+  function handleDeleted(shopId: string) {
+    setShops((prev) => prev.filter((s) => s.id !== shopId));
+    setSelectedShopId(null);
+  }
+
   return (
     <div className="min-h-screen w-full" style={{ backgroundColor: "var(--gw-bg)", fontFamily: "var(--font-sans)" }}>
       <div className="max-w-2xl md:max-w-4xl mx-auto px-5 py-10">
@@ -4121,7 +4193,12 @@ function AdminDashboard({ onLogout }: AdminDashboardProps) {
         </div>
 
         {selectedShop ? (
-          <AdminShopDetail shop={selectedShop} onBack={() => setSelectedShopId(null)} onTierChanged={handleTierChanged} />
+          <AdminShopDetail
+            shop={selectedShop}
+            onBack={() => setSelectedShopId(null)}
+            onTierChanged={handleTierChanged}
+            onDeleted={handleDeleted}
+          />
         ) : (
           <>
             {loading && (

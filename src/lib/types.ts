@@ -65,6 +65,13 @@ export interface ShopProfile {
 export interface SaleLine {
   menuItem: MenuItem;
   qty: number;
+  // Size multiplier applied to every recipe ingredient (a Large = 1.33). Default 1.
+  scale?: number;
+  // Extra ingredient use from modifiers, already totalled for this whole line
+  // (amount in the item's own measure).
+  adds?: { itemId: number; amount: number }[];
+  // Modifier swaps: wherever the recipe uses `from`, use `to` instead.
+  swaps?: { from: number; to: number }[];
 }
 
 // One row in the admin panel's shop list — a trimmed-down ShopProfile plus

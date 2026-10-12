@@ -1775,6 +1775,324 @@ function EndOfShiftImport({ shopId, items, menuItems, onApply }: EndOfShiftImpor
   );
 }
 
+// ---- Square: size multipliers and modifier rules -------------------------------
+
+type SquareEffect =
+  | { type: "add"; itemId: number; amount: number }
+  | { type: "swap"; fromItemId: number; toItemId: number };
+
+interface SquareSize {
+  key: string;
+  label: string;
+  multiplier: number;
+  confirmed: boolean;
+  timesSeen: number;
+}
+
+interface SquareModifier {
+  key: string;
+  label: string;
+  effects: SquareEffect[] | null;
+  timesSeen: number;
+}
+
+function SquareSizeRow({ size, onSaved }: { size: SquareSize; onSaved: () => void }) {
+  const [draft, setDraft] = useState(String(size.multiplier));
+  const [error, setError] = useState("");
+
+  async function save() {
+    const value = parseFloat(draft);
+    if (!Number.isFinite(value) || value <= 0 || value > 10) {
+      setError("Use a number like 1.33.");
+      return;
+    }
+    if (size.confirmed && value === size.multiplier) return;
+    setError("");
+    try {
+      const res = await fetch("/api/square/sizes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: size.key, multiplier: value }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        setError(data?.error || "Couldn't save that.");
+        return;
+      }
+      onSaved();
+    } catch {
+      setError("Couldn't save that.");
+    }
+  }
+
+  return (
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 border-b" style={{ borderColor: "var(--gw-border)" }}>
+      <span className="text-sm flex-1 min-w-[6rem]" style={{ color: "var(--gw-text)" }}>
+        {size.label}
+        <span className="font-mono text-[11px] ml-2" style={{ color: "var(--gw-text-3)" }}>
+          sold {size.timesSeen}×
+        </span>
+      </span>
+      <label className="flex items-center gap-2 text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
+        uses
+        <input
+          type="number"
+          step="0.05"
+          min="0.05"
+          max="10"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={save}
+          aria-label={`Multiplier for ${size.label}`}
+          className="w-20 rounded-md border px-2 py-1.5 min-h-11 text-center bg-transparent focus:outline-none"
+          style={{ borderColor: size.confirmed ? "var(--gw-border-strong)" : "var(--gw-warn)", color: "var(--gw-text)" }}
+        />
+        × the recipe
+      </label>
+      {!size.confirmed && (
+        <span className="text-[11px] font-mono" style={{ color: "var(--gw-warn)" }}>
+          not set — counts as 1×
+        </span>
+      )}
+      {error && (
+        <span role="alert" className="text-[11px] font-mono w-full" style={{ color: "var(--gw-danger-text)" }}>
+          {error}
+        </span>
+      )}
+    </li>
+  );
+}
+
+type ModifierKind = "unset" | "none" | "add" | "swap";
+
+function effectSummary(effects: SquareEffect[] | null, items: InventoryItem[]): string {
+  if (effects === null) return "Not set up — changes nothing yet";
+  if (effects.length === 0) return "No stock effect";
+  const name = (id: number) => items.find((i) => i.id === id)?.name ?? "a removed item";
+  return effects
+    .map((e) => {
+      if (e.type === "add") {
+        const it = items.find((i) => i.id === e.itemId);
+        return `Uses extra ${trimNumber(e.amount)} ${it?.unitMeasure ?? ""} ${name(e.itemId)}`.replace(/\s+/g, " ");
+      }
+      return `Uses ${name(e.toItemId)} instead of ${name(e.fromItemId)}`;
+    })
+    .join("; ");
+}
+
+function SquareModifierRow({
+  modifier,
+  items,
+  onSaved,
+}: {
+  modifier: SquareModifier;
+  items: InventoryItem[];
+  onSaved: () => void;
+}) {
+  const sized = items.filter((i) => i.unitSize);
+  const first = modifier.effects?.[0];
+  const [editing, setEditing] = useState(modifier.effects === null);
+  const [kind, setKind] = useState<ModifierKind>(
+    modifier.effects === null ? "unset" : first ? first.type : "none"
+  );
+  const [itemId, setItemId] = useState<number>(first?.type === "add" ? first.itemId : (sized[0]?.id ?? 0));
+  const [amount, setAmount] = useState(first?.type === "add" ? String(first.amount) : "1");
+  const [fromId, setFromId] = useState<number>(first?.type === "swap" ? first.fromItemId : (sized[0]?.id ?? 0));
+  const [toId, setToId] = useState<number>(first?.type === "swap" ? first.toItemId : (sized[1]?.id ?? sized[0]?.id ?? 0));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function save() {
+    let effects: SquareEffect[];
+    if (kind === "none") effects = [];
+    else if (kind === "add") {
+      const value = parseFloat(amount);
+      if (!itemId || !Number.isFinite(value) || value < 0) {
+        setError("Pick an ingredient and an amount.");
+        return;
+      }
+      effects = [{ type: "add", itemId, amount: value }];
+    } else if (kind === "swap") {
+      if (!fromId || !toId || fromId === toId) {
+        setError("Pick two different ingredients.");
+        return;
+      }
+      effects = [{ type: "swap", fromItemId: fromId, toItemId: toId }];
+    } else {
+      setError("Choose what this modifier does.");
+      return;
+    }
+    setError("");
+    setSaving(true);
+    try {
+      const res = await fetch("/api/square/modifiers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: modifier.key, effects }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        setError(data?.error || "Couldn't save that.");
+        return;
+      }
+      setEditing(false);
+      onSaved();
+    } catch {
+      setError("Couldn't save that.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const selectCls = "rounded-md border px-2 py-1.5 min-h-11 text-xs font-mono bg-transparent focus:outline-none";
+  const selectStyle = { borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" };
+  const itemOptions = sized.map((i) => (
+    <option key={i.id} value={i.id} style={{ color: "#000" }}>
+      {i.name}
+    </option>
+  ));
+  const chosen = items.find((i) => i.id === itemId);
+
+  return (
+    <li className="py-2 border-b" style={{ borderColor: "var(--gw-border)" }}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="text-sm flex-1 min-w-[6rem]" style={{ color: "var(--gw-text)" }}>
+          {modifier.label}
+          <span className="font-mono text-[11px] ml-2" style={{ color: "var(--gw-text-3)" }}>
+            sold {modifier.timesSeen}×
+          </span>
+        </span>
+        {!editing && (
+          <>
+            <span
+              className="text-xs font-mono"
+              style={{ color: modifier.effects === null ? "var(--gw-warn)" : "var(--gw-text-2)" }}
+            >
+              {effectSummary(modifier.effects, items)}
+            </span>
+            <button
+              onClick={() => setEditing(true)}
+              className="text-xs font-mono underline underline-offset-2 px-2 min-h-11"
+              style={{ color: "var(--gw-accent-text)" }}
+            >
+              Edit
+            </button>
+          </>
+        )}
+      </div>
+
+      {editing && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <select
+            aria-label={`What ${modifier.label} does`}
+            value={kind}
+            onChange={(e) => setKind(e.target.value as ModifierKind)}
+            className={selectCls}
+            style={selectStyle}
+          >
+            <option value="unset" style={{ color: "#000" }}>
+              Choose what it does…
+            </option>
+            <option value="none" style={{ color: "#000" }}>
+              No stock effect
+            </option>
+            <option value="add" style={{ color: "#000" }}>
+              Uses an extra ingredient
+            </option>
+            <option value="swap" style={{ color: "#000" }}>
+              Swaps one ingredient for another
+            </option>
+          </select>
+
+          {kind === "add" && (
+            <>
+              <select
+                aria-label="Extra ingredient"
+                value={itemId}
+                onChange={(e) => setItemId(parseInt(e.target.value, 10))}
+                className={selectCls}
+                style={selectStyle}
+              >
+                {itemOptions}
+              </select>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                aria-label="Amount used"
+                className="w-20 rounded-md border px-2 py-1.5 min-h-11 text-center text-xs font-mono bg-transparent focus:outline-none"
+                style={selectStyle}
+              />
+              <span className="text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
+                {chosen?.unitMeasure ?? ""}
+              </span>
+            </>
+          )}
+
+          {kind === "swap" && (
+            <>
+              <span className="text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
+                instead of
+              </span>
+              <select
+                aria-label="Ingredient it replaces"
+                value={fromId}
+                onChange={(e) => setFromId(parseInt(e.target.value, 10))}
+                className={selectCls}
+                style={selectStyle}
+              >
+                {itemOptions}
+              </select>
+              <span className="text-xs font-mono" style={{ color: "var(--gw-text-2)" }}>
+                use
+              </span>
+              <select
+                aria-label="Ingredient it uses instead"
+                value={toId}
+                onChange={(e) => setToId(parseInt(e.target.value, 10))}
+                className={selectCls}
+                style={selectStyle}
+              >
+                {itemOptions}
+              </select>
+            </>
+          )}
+
+          <button
+            onClick={save}
+            disabled={saving}
+            className="px-3 py-2 min-h-11 rounded-md text-xs font-mono font-semibold disabled:opacity-40"
+            style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+          {modifier.effects !== null && (
+            <button
+              onClick={() => setEditing(false)}
+              className="text-xs font-mono px-2 min-h-11"
+              style={{ color: "var(--gw-text-3)" }}
+            >
+              Cancel
+            </button>
+          )}
+          {kind === "swap" && (
+            <p className="w-full text-[11px]" style={{ color: "var(--gw-text-3)" }}>
+              The recipe&apos;s amount carries over as-is, measured in the new ingredient&apos;s unit.
+            </p>
+          )}
+        </div>
+      )}
+      {error && (
+        <p role="alert" className="text-[11px] font-mono mt-1" style={{ color: "var(--gw-danger-text)" }}>
+          {error}
+        </p>
+      )}
+    </li>
+  );
+}
+
 // ---- Square connection (Pro) ----------------------------------------------
 
 interface SquareStatus {
@@ -1785,6 +2103,8 @@ interface SquareStatus {
   lastError: string | null;
   connectedSince: string | null;
   unmatched: { key: string; name: string; variation: string | null; qty: number }[];
+  sizes: SquareSize[];
+  modifiers: SquareModifier[];
 }
 
 const SQUARE_FLASH: Record<string, string> = {
@@ -1795,9 +2115,11 @@ const SQUARE_FLASH: Record<string, string> = {
 
 function SquareConnectionCard({
   menuItems,
+  items,
   onStockChanged,
 }: {
   menuItems: MenuItem[];
+  items: InventoryItem[];
   onStockChanged: () => void;
 }) {
   const [status, setStatus] = useState<SquareStatus | null>(null);
@@ -2040,6 +2362,38 @@ function SquareConnectionCard({
               </ul>
             </div>
           )}
+
+          {status.sizes.length > 0 && (
+            <div className="mt-5">
+              <div className={`${labelCls} mb-1`} style={{ color: "var(--gw-text-3)" }}>
+                Sizes
+              </div>
+              <p className="text-xs mb-2" style={{ color: "var(--gw-text-2)" }}>
+                Your recipes are the base size. Tell GroundWorks how much more or less each size uses, like 1.33 for a Large or 0.75 for a Small, and every drink sold in that size deducts that much.
+              </p>
+              <ul>
+                {status.sizes.map((z) => (
+                  <SquareSizeRow key={`${z.key}:${z.multiplier}:${z.confirmed}`} size={z} onSaved={loadStatus} />
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {status.modifiers.length > 0 && (
+            <div className="mt-5">
+              <div className={`${labelCls} mb-1`} style={{ color: "var(--gw-text-3)" }}>
+                Modifiers
+              </div>
+              <p className="text-xs mb-2" style={{ color: "var(--gw-text-2)" }}>
+                Add-ons and swaps on a drink (extra shot, oat milk). Say what each one does to your stock. Until you do, it changes nothing.
+              </p>
+              <ul>
+                {status.modifiers.map((m) => (
+                  <SquareModifierRow key={`${m.key}:${JSON.stringify(m.effects)}`} modifier={m} items={items} onSaved={loadStatus} />
+                ))}
+              </ul>
+            </div>
+          )}
         </>
       )}
 
@@ -2092,7 +2446,7 @@ function RecipesPage({
           one) with something like 32 oz per carton before you can build a recipe.
         </div>
       )}
-      <SquareConnectionCard menuItems={menuItems} onStockChanged={onStockChanged} />
+      <SquareConnectionCard menuItems={menuItems} items={items} onStockChanged={onStockChanged} />
       <AddMenuItemForm menuItems={menuItems} onAdd={onAddMenuItem} />
       {menuItems.map((mi) => (
         <MenuItemCard

@@ -51,6 +51,10 @@ export interface Match {
   kind: MatchKind;
   suggestionId: number | null;
   suggestionScore: number;
+  // True when the recipe matched the item name WITH its size/variation
+  // ("Oat Latte Large" has its own recipe), so no size multiplier should be
+  // applied on top.
+  viaVariation?: boolean;
 }
 
 const NAME_HEADERS = [
@@ -366,14 +370,17 @@ export function matchRecipe(row: ParsedRow, recipes: Recipe[], aliases: Record<s
 
   const candidates = row.variation ? [`${row.name} ${row.variation}`, row.name] : [row.name];
 
+  const withVariation = row.variation ? candidates[0] : null;
   for (const c of candidates) {
     const hit = byNorm.get(normalizeName(c));
-    if (hit && hit.length === 1) return { recipeId: hit[0].id, kind: "exact", suggestionId: null, suggestionScore: 1 };
+    if (hit && hit.length === 1) {
+      return { recipeId: hit[0].id, kind: "exact", suggestionId: null, suggestionScore: 1, viaVariation: c === withVariation };
+    }
   }
   for (const c of candidates) {
     const aliased = aliases[normalizeName(c)];
     if (aliased !== undefined && recipeById.has(aliased)) {
-      return { recipeId: aliased, kind: "alias", suggestionId: null, suggestionScore: 1 };
+      return { recipeId: aliased, kind: "alias", suggestionId: null, suggestionScore: 1, viaVariation: c === withVariation };
     }
   }
   const cleanedHits = new Set<number>();
@@ -414,14 +421,21 @@ export interface DeductionResult {
 export function computeDeductions(sales: SaleLine[], items: InventoryItem[]): DeductionResult {
   const byItem: Record<number, number> = {};
   const skipped: { recipe: string; item: string }[] = [];
-  for (const { menuItem, qty } of sales) {
-    for (const ing of menuItem.ingredients) {
-      const item = items.find((i) => i.id === ing.itemId);
+  for (const { menuItem, qty, scale = 1, adds = [], swaps = [] } of sales) {
+    const swapTo = new Map(swaps.map((s) => [s.from, s.to]));
+    // Everything this line uses, in each item's own measure: the recipe (scaled
+    // by size, with any swapped ingredient), then modifier extras.
+    const uses = [
+      ...menuItem.ingredients.map((ing) => ({ itemId: swapTo.get(ing.itemId) ?? ing.itemId, amount: ing.amount * scale * qty })),
+      ...adds,
+    ];
+    for (const use of uses) {
+      const item = items.find((i) => i.id === use.itemId);
       if (!item || !item.unitSize) {
         skipped.push({ recipe: menuItem.name, item: item?.name ?? "a removed item" });
         continue;
       }
-      byItem[ing.itemId] = (byItem[ing.itemId] || 0) + (ing.amount * qty) / item.unitSize;
+      byItem[use.itemId] = (byItem[use.itemId] || 0) + use.amount / item.unitSize;
     }
   }
   return { byItem, skipped };

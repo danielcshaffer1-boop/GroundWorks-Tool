@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { InventoryItem, MenuItem, SaleLine } from "./types";
-import { buildRow, computeDeductions, matchRecipe, type ParsedRow } from "./sales-import";
+import { buildRow, computeDeductions, matchRecipe, normalizeName, type ParsedRow } from "./sales-import";
 
 // Square connection (Pro): the seller authorizes GroundWorks once through
 // Square's OAuth; a scheduled sync then reads their completed orders and
@@ -171,6 +171,7 @@ export interface SquareLineItem {
   variation_name?: string;
   quantity?: string;
   item_type?: string;
+  modifiers?: { name?: string; quantity?: string }[];
 }
 export interface SquareOrder {
   id: string;
@@ -209,10 +210,25 @@ async function searchClosedOrders(token: string, locationIds: string[], since: D
 
 // ---- Turning orders into stock changes (pure, unit-tested) -----------------
 
+export type ModifierEffect =
+  | { type: "add"; itemId: number; amount: number }
+  | { type: "swap"; fromItemId: number; toItemId: number };
+
+// The owner's setup, keyed by normalized Square name: size multipliers, and
+// modifier rules (null = seen but not set up yet, [] = deliberately no effect).
+export interface PricingConfig {
+  sizes: Record<string, number>;
+  rules: Record<string, ModifierEffect[] | null>;
+}
+
 export interface PricedOrder {
   id: string;
   deltas: Record<number, number>; // inventory item id -> stocking units used
   unmatched: { key: string; name: string; variation: string | null; qty: number }[];
+  // Sizes and modifiers seen on lines that matched a recipe, so the owner can
+  // be shown them for setup.
+  sizes: { key: string; label: string }[];
+  modifiers: { key: string; label: string }[];
 }
 
 // Only confident matches deduct anything automatically (exact name, a name
@@ -223,7 +239,8 @@ export function priceOrders(
   orders: SquareOrder[],
   menuItems: MenuItem[],
   items: InventoryItem[],
-  aliases: Record<string, number>
+  aliases: Record<string, number>,
+  config: PricingConfig = { sizes: {}, rules: {} }
 ): PricedOrder[] {
   const recipes = menuItems.map((m) => ({ id: m.id, name: m.name }));
   const byId = new Map(menuItems.map((m) => [m.id, m]));
@@ -231,6 +248,8 @@ export function priceOrders(
   return orders.map((order) => {
     const sales: SaleLine[] = [];
     const unmatched: PricedOrder["unmatched"] = [];
+    const sizes: PricedOrder["sizes"] = [];
+    const modifiers: PricedOrder["modifiers"] = [];
     for (const line of order.line_items ?? []) {
       if (line.item_type === "GIFT_CARD" || !line.name) continue;
       const qty = Number(line.quantity);
@@ -238,12 +257,60 @@ export function priceOrders(
       const row: ParsedRow = buildRow(line.name, line.variation_name, qty);
       const match = matchRecipe(row, recipes, aliases);
       const recipe = match.recipeId !== null ? byId.get(match.recipeId) : undefined;
-      if (recipe) sales.push({ menuItem: recipe, qty });
-      else unmatched.push({ key: row.key, name: row.name, variation: row.variation, qty });
+      if (!recipe) {
+        unmatched.push({ key: row.key, name: row.name, variation: row.variation, qty });
+        continue;
+      }
+
+      // Size: only when the size is not already part of the recipe's own name.
+      let scale = 1;
+      if (row.variation && !match.viaVariation) {
+        const sizeKey = normalizeName(row.variation);
+        scale = config.sizes[sizeKey] ?? 1;
+        sizes.push({ key: sizeKey, label: row.variation });
+      }
+
+      // Modifiers: apply the owner's rule for each; unknown ones are recorded
+      // for setup and, until then, change nothing.
+      const adds: { itemId: number; amount: number }[] = [];
+      const swaps: { from: number; to: number }[] = [];
+      for (const mod of line.modifiers ?? []) {
+        if (!mod.name) continue;
+        const modKey = normalizeName(mod.name);
+        if (!modKey) continue;
+        const modQty = Number(mod.quantity ?? "1");
+        const times = Number.isFinite(modQty) && modQty > 0 ? modQty : 1;
+        modifiers.push({ key: modKey, label: mod.name.trim() });
+        for (const effect of config.rules[modKey] ?? []) {
+          if (effect.type === "add") adds.push({ itemId: effect.itemId, amount: effect.amount * times * qty });
+          else swaps.push({ from: effect.fromItemId, to: effect.toItemId });
+        }
+      }
+
+      sales.push({ menuItem: recipe, qty, scale, adds, swaps });
     }
     const { byItem } = computeDeductions(sales, items);
-    return { id: order.id, deltas: byItem, unmatched };
+    return { id: order.id, deltas: byItem, unmatched, sizes, modifiers };
   });
+}
+
+// Reads a stored effects array defensively: anything malformed counts as "not
+// set up" (null) rather than risking a wrong deduction.
+export function parseEffects(raw: unknown): ModifierEffect[] | null {
+  if (!Array.isArray(raw)) return null;
+  const out: ModifierEffect[] = [];
+  for (const e of raw) {
+    if (!e || typeof e !== "object") return null;
+    const x = e as Record<string, unknown>;
+    if (x.type === "add" && Number.isInteger(x.itemId) && typeof x.amount === "number" && Number.isFinite(x.amount) && x.amount >= 0) {
+      out.push({ type: "add", itemId: x.itemId as number, amount: x.amount });
+    } else if (x.type === "swap" && Number.isInteger(x.fromItemId) && Number.isInteger(x.toItemId)) {
+      out.push({ type: "swap", fromItemId: x.fromItemId as number, toItemId: x.toItemId as number });
+    } else {
+      return null;
+    }
+  }
+  return out;
 }
 
 // ---- The sync --------------------------------------------------------------
@@ -315,10 +382,12 @@ export async function syncShop(admin: SupabaseClient, shopId: string): Promise<S
 
     let applied = 0;
     if (fresh.length > 0) {
-      const [{ data: itemRows }, { data: menuRows }, { data: aliasRows }] = await Promise.all([
+      const [{ data: itemRows }, { data: menuRows }, { data: aliasRows }, { data: sizeRows }, { data: ruleRows }] = await Promise.all([
         admin.from("items").select("id, name, unit, count, threshold, category, unit_size, unit_measure").eq("shop_id", shopId),
         admin.from("menu_items").select("id, name, ingredients(id, item_id, amount)").eq("shop_id", shopId),
         admin.from("sales_aliases").select("name_key, menu_item_id").eq("shop_id", shopId),
+        admin.from("sales_sizes").select("size_key, multiplier").eq("shop_id", shopId),
+        admin.from("modifier_rules").select("name_key, effects").eq("shop_id", shopId),
       ]);
       const items: InventoryItem[] = (itemRows ?? []).map((r) => ({
         id: r.id,
@@ -342,7 +411,13 @@ export async function syncShop(admin: SupabaseClient, shopId: string): Promise<S
       const aliases: Record<string, number> = {};
       for (const a of aliasRows ?? []) aliases[a.name_key as string] = a.menu_item_id as number;
 
-      const priced = priceOrders(fresh, menuItems, items, aliases);
+      // If the size/modifier tables aren't there yet (migration not run), these
+      // come back empty and the sync behaves exactly as before.
+      const config: PricingConfig = { sizes: {}, rules: {} };
+      for (const r of sizeRows ?? []) config.sizes[r.size_key as string] = Number(r.multiplier);
+      for (const r of ruleRows ?? []) config.rules[r.name_key as string] = parseEffects(r.effects);
+
+      const priced = priceOrders(fresh, menuItems, items, aliases, config);
       for (let i = 0; i < priced.length; i += 200) {
         const { data, error } = await admin.rpc("apply_square_sales", {
           p_shop_id: shopId,

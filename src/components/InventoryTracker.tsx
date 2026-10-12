@@ -890,7 +890,7 @@ function AddStockForm({ item, onAdd, onCancel }: AddStockFormProps) {
           className="px-4 py-2 min-h-11 rounded-md text-sm font-mono flex items-center gap-1.5 font-semibold disabled:opacity-40"
           style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
         >
-          <PackagePlus size={14} /> Add {trimNumber(qtyNum)} {item.unit}
+          <PackagePlus size={14} /> Add {trimNumber(qtyNum)} {qtyNum === 1 ? item.unit : manyOf(item.unit)}
         </button>
       </div>
     </div>
@@ -4554,15 +4554,15 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
 
         {mode === "batch" && (
           <div
-            className="rounded-lg border px-4 py-3 mb-6 flex items-center justify-between"
+            className="rounded-lg border px-4 py-3 mb-6 flex flex-wrap items-center justify-between gap-3"
             style={{ borderColor: "var(--gw-border-strong)", backgroundColor: "var(--gw-surface-raised)" }}
           >
             <span className="text-sm" style={{ color: "var(--gw-text)" }}>
-              Walk the storage room, update every count, then save once.
+              Walk the storage room, type each count, then save once.
             </span>
             <button
               onClick={saveBatch}
-              className="px-4 py-2 rounded-md text-sm font-mono font-semibold flex items-center gap-1.5"
+              className="whitespace-nowrap px-4 py-2 min-h-11 rounded-md text-sm font-mono font-semibold flex items-center gap-1.5"
               style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
             >
               <Check size={14} /> Save Closing Count
@@ -4823,12 +4823,12 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
               className="fixed inset-x-0 bottom-0 z-30 border-t px-4 py-3 flex items-center justify-center gap-4"
               style={{ borderColor: "var(--gw-border-strong)", backgroundColor: "var(--gw-surface-raised)" }}
             >
-              <span className="text-sm font-mono" style={{ color: "var(--gw-text-2)" }}>
+              <span className="flex-1 min-w-0 text-sm font-mono" style={{ color: "var(--gw-text-2)" }}>
                 {changed === 0 ? "No counts changed yet" : `${changed} count${changed === 1 ? "" : "s"} changed`}
               </span>
               <button
                 onClick={saveBatch}
-                className="px-4 py-2 min-h-11 rounded-md text-sm font-mono font-semibold flex items-center gap-1.5"
+                className="shrink-0 whitespace-nowrap px-4 py-2 min-h-11 rounded-md text-sm font-mono font-semibold flex items-center gap-1.5"
                 style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
               >
                 <Check size={14} /> Save Closing Count

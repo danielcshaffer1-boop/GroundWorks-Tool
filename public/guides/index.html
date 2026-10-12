@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#17120e">
+<title>GroundWorks Guides</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+:root { --bg:#f6f4f0; --surface:#fff; --fg:#231c16; --fg-2:#55493f; --line:#d9d2c8; --accent:#b4521f; --accent-fill:#c4592a; --font-display:"Barlow Condensed","Arial Narrow",Arial,sans-serif; --font-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif; --font-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace; }
+@media (prefers-color-scheme: dark) { :root { --bg:#17120e; --surface:#211a14; --fg:#f2ebe2; --fg-2:#cbbfb2; --line:#3a2f26; --accent:#e98a55; color-scheme: dark; } }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font-family:var(--font-body); line-height:1.6; padding:3rem 1.25rem 4rem; }
+main { max-width: 40rem; margin-inline:auto; display:grid; gap:1.5rem; }
+.label { font-family:var(--font-mono); font-size:.72rem; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); }
+h1 { font-family:var(--font-display); font-weight:700; text-transform:uppercase; font-size:clamp(2.6rem,9vw,4rem); line-height:1; margin:.3rem 0 0; }
+p { margin:0; color:var(--fg-2); }
+a.card { display:grid; gap:.3rem; text-decoration:none; color:inherit; background:var(--surface); border:1px solid var(--line); border-top:4px solid var(--accent-fill); padding:1.1rem 1.25rem; }
+a.card:hover, a.card:focus-visible { border-color: var(--accent); outline: none; }
+a.card h2 { font-family:var(--font-display); text-transform:uppercase; font-size:1.7rem; margin:0; line-height:1.05; }
+a.card .go { font-family:var(--font-mono); font-size:.8rem; color:var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <div class="label">GroundWorks Inventory</div>
+    <h1>Training guides</h1>
+  </div>
+  <p>Step-by-step guides for your team. Open them on a phone at the counter, or print them.</p>
+  <a class="card" href="/guides/barista">
+    <div class="label">Part 1</div>
+    <h2>Barista guide</h2>
+    <p>For baristas and day-one staff: your shift, deliveries, the closing count, ordering, and a one-page counter card.</p>
+    <span class="go">Open the barista guide →</span>
+  </a>
+  <a class="card" href="/guides/owner">
+    <div class="label">Part 2</div>
+    <h2>Owner guide</h2>
+    <p>For owners and managers: setting up items, alerts, the owner PIN, recipes, Square, sizes and modifiers.</p>
+    <span class="go">Open the owner guide →</span>
+  </a>
+</main>
+</body>
+</html>

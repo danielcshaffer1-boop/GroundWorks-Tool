@@ -4900,7 +4900,17 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
           return <UndoBar text={`${u.name}: ${trimNumber(undo.from)} → ${trimNumber(u.count)} ${u.unit}`} onUndo={undoLast} />;
         })()}
 
-        <div className="text-center font-mono text-[11px] uppercase tracking-widest mt-6" style={{ color: "var(--gw-text-3)" }}>
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-x-4 text-xs font-mono" style={{ color: "var(--gw-text-3)" }}>
+          <span>Training guides:</span>
+          <a href="/guides/barista" target="_blank" rel="noreferrer" className="underline underline-offset-2 min-h-11 inline-flex items-center" style={{ color: "var(--gw-text-2)" }}>
+            Barista guide
+          </a>
+          <a href="/guides/owner" target="_blank" rel="noreferrer" className="underline underline-offset-2 min-h-11 inline-flex items-center" style={{ color: "var(--gw-text-2)" }}>
+            Owner guide
+          </a>
+        </div>
+
+        <div className="text-center font-mono text-[11px] uppercase tracking-widest mt-2" style={{ color: "var(--gw-text-3)" }}>
           Text alerts fire automatically when an item crosses into Reorder or Critical
         </div>
       </div>

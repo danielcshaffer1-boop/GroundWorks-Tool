@@ -15,6 +15,15 @@ import type { Status } from "@/lib/types";
 // call explicitly.
 
 const STATUS_RANK: Record<Status, number> = { good: 0, low: 1, critical: 2 };
+
+// An item that keeps bouncing around its threshold (restocked, used, restocked…)
+// shouldn't text every time: the same status — or a milder one — isn't sent
+// again for an item within this window. Getting worse (Low, then Critical)
+// always goes out. Each shop is also capped on alert events per day, so a
+// mistake or abuse can't turn into a flood of texts.
+const COOLDOWN_MS = 2 * 60 * 60 * 1000;
+const DAILY_EVENT_CAP = 40;
+const LOG_KEEP_MS = 7 * 24 * 60 * 60 * 1000;
 const STATUS_LABEL: Record<"low" | "critical", string> = { low: "Reorder Soon", critical: "Critical" };
 
 function getStatus(count: number, threshold: number): Status {
@@ -97,6 +106,39 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "SMS isn't configured yet." }, { status: 500 });
   }
 
+  // Cooldown and daily cap (supabase/018_alert_send_log.sql). If the log can't
+  // be read, send anyway: a missed restock alert costs more than a repeat.
+  const [recentRes, dayRes] = await Promise.all([
+    supabase
+      .from("alert_send_log")
+      .select("status")
+      .eq("item_id", record.id)
+      .gte("sent_at", new Date(Date.now() - COOLDOWN_MS).toISOString()),
+    supabase
+      .from("alert_send_log")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", record.shop_id)
+      .gte("sent_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+  ]);
+  if (recentRes.error || dayRes.error) {
+    console.error("Couldn't read the alert send log:", recentRes.error ?? dayRes.error);
+  } else {
+    const alreadySent = (recentRes.data ?? []).some((r) => STATUS_RANK[r.status as Status] >= STATUS_RANK[newStatus]);
+    if (alreadySent) return NextResponse.json({ ok: true, skipped: "already texted about this item recently" });
+    if ((dayRes.count ?? 0) >= DAILY_EVENT_CAP) {
+      console.error(`Shop ${record.shop_id} hit the daily alert cap (${DAILY_EVENT_CAP}); not texting.`);
+      return NextResponse.json({ ok: true, skipped: "daily alert limit reached" });
+    }
+  }
+
+  // Record it before sending, so two near-simultaneous webhooks can't both send.
+  const { data: logRow, error: logError } = await supabase
+    .from("alert_send_log")
+    .insert({ shop_id: record.shop_id, item_id: record.id, status: newStatus })
+    .select("id")
+    .single();
+  if (logError) console.error("Couldn't record the alert in the send log:", logError);
+
   // Automatic Square deductions leave fractional counts (0.8734 gallons); texts read better rounded.
   const shownCount = Math.round(Number(record.count) * 100) / 100;
   const body = `GroundWorks Inventory: ${cleanForSms(String(record.name), 40)} is now ${STATUS_LABEL[newStatus]} — ${shownCount} ${cleanForSms(String(record.unit), 20)} left (threshold ${Number(record.threshold)}). Reply STOP to opt out.`;
@@ -118,6 +160,11 @@ export async function POST(request: Request) {
   if (failed > 0) {
     console.error(`${failed} of ${phones.length} restock alert texts failed to send.`);
   }
+  // Nobody received it: don't let a failed send count against the cooldown.
+  if (failed === phones.length && logRow) {
+    await supabase.from("alert_send_log").delete().eq("id", logRow.id);
+  }
+  await supabase.from("alert_send_log").delete().lt("sent_at", new Date(Date.now() - LOG_KEEP_MS).toISOString());
 
   return NextResponse.json({ ok: true, sent: phones.length - failed, failed });
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { requireTwoStep } from "@/lib/admin-mfa";
 import { DEMO_SHOP_ID } from "@/lib/demo";
 import { decryptToken, revokeAccess, squareConfigured } from "@/lib/square";
 
@@ -21,6 +22,8 @@ export async function POST(request: NextRequest) {
 
   const { data: adminRow } = await supabase.from("admins").select("id").eq("id", user.id).maybeSingle();
   if (!adminRow) return NextResponse.json({ error: "Not authorized." }, { status: 403 });
+  const needTwoStep = await requireTwoStep(supabase);
+  if (needTwoStep) return needTwoStep;
 
   const body = (await request.json().catch(() => null)) as { shopId?: unknown; confirmName?: unknown } | null;
   const shopId = body?.shopId;

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import {
   Plus,
   Minus,
@@ -3051,19 +3051,17 @@ function LoginScreen({ initialMode = "sign-in" }: { initialMode?: AuthMode }) {
           </>
         )}
 
+        {/* GroundWorks doesn't send customers email, so there is no emailed reset
+            link: a forgotten password is reset by hand. (The "forgot-password" mode
+            and /reset-password page are kept, unused, in case that changes.) */}
         {authMode === "sign-in" && (
-          <button
-            type="button"
-            onClick={() => {
-              setAuthMode("forgot-password");
-              setError("");
-              setNotice("");
-            }}
+          <a
+            href="mailto:danielcshaffer1@gmail.com?subject=GroundWorks%20password%20reset"
             className="text-xs font-mono underline underline-offset-2"
             style={{ color: "var(--gw-text-2)" }}
           >
-            Forgot password?
-          </button>
+            Forgot password? Contact us and we&apos;ll reset it.
+          </a>
         )}
 
         {error && (
@@ -5324,6 +5322,154 @@ function AdminShopDetail({ shop, onBack, onTierChanged, onDeleted }: AdminShopDe
   );
 }
 
+// Two-step (authenticator app) verification for the admin screen. The admin
+// routes refuse to change or delete anything until the session has passed it.
+function AdminTwoStep() {
+  const supabase = useMemo(() => createClient(), []);
+  const [state, setState] = useState<"loading" | "needs-setup" | "needs-code" | "verified">("loading");
+  const [factorId, setFactorId] = useState("");
+  const [qr, setQr] = useState("");
+  const [secret, setSecret] = useState("");
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async (): Promise<{ next: "needs-setup" | "needs-code" | "verified"; id: string }> => {
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aal?.currentLevel === "aal2") return { next: "verified", id: "" };
+    const { data: factors } = await supabase.auth.mfa.listFactors();
+    const verified = factors?.totp?.[0];
+    return verified ? { next: "needs-code", id: verified.id } : { next: "needs-setup", id: "" };
+  }, [supabase]);
+
+  async function refresh() {
+    const r = await load();
+    setFactorId(r.id);
+    setState(r.next);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    load().then((r) => {
+      if (cancelled) return;
+      setFactorId(r.id);
+      setState(r.next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [load]);
+
+  async function startSetup() {
+    setError("");
+    setBusy(true);
+    try {
+      // Clear out an unfinished earlier attempt, or enrolling again is refused.
+      const { data: factors } = await supabase.auth.mfa.listFactors();
+      for (const f of factors?.all ?? []) {
+        if (f.factor_type === "totp" && f.status === "unverified") await supabase.auth.mfa.unenroll({ factorId: f.id });
+      }
+      const { data, error: enrollError } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: "GroundWorks admin" });
+      if (enrollError || !data) {
+        setError(enrollError?.message || "Couldn't start setup.");
+        return;
+      }
+      setFactorId(data.id);
+      setQr(data.totp.qr_code);
+      setSecret(data.totp.secret);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function verify() {
+    if (!factorId || code.trim().length < 6) return;
+    setError("");
+    setBusy(true);
+    try {
+      const { error: verifyError } = await supabase.auth.mfa.challengeAndVerify({ factorId, code: code.trim() });
+      if (verifyError) {
+        setError("That code didn't work. Check the code in your authenticator app and try again.");
+        return;
+      }
+      setCode("");
+      setQr("");
+      setSecret("");
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const box = { borderColor: "var(--gw-border)", backgroundColor: "var(--gw-surface)" } as const;
+  if (state === "loading") return null;
+  if (state === "verified") {
+    return (
+      <div className="rounded-lg border px-4 py-3 mb-6 text-xs font-mono" style={{ ...box, color: "var(--gw-ok)" }}>
+        Two-step verification: on. Changing plans and deleting shops is unlocked for this sign-in.
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-lg border px-4 py-4 mb-6" style={box}>
+      <div className="text-sm mb-1" style={{ color: "var(--gw-text)" }}>
+        {state === "needs-setup" ? "Set up two-step verification" : "Enter your authenticator code"}
+      </div>
+      <p className="text-xs mb-3" style={{ color: "var(--gw-text-2)" }}>
+        {state === "needs-setup"
+          ? "Admin actions need a code from an authenticator app (Google Authenticator, 1Password, Authy…) on top of your password. Until you finish this, changing plans and deleting shops is locked."
+          : "Changing plans and deleting shops needs the 6-digit code from your authenticator app."}
+      </p>
+      {state === "needs-setup" && !qr && (
+        <button
+          onClick={startSetup}
+          disabled={busy}
+          className="text-xs px-3 py-2 rounded border"
+          style={{ borderColor: "var(--gw-border)", color: "var(--gw-text)" }}
+        >
+          {busy ? "Starting…" : "Start setup"}
+        </button>
+      )}
+      {qr && (
+        <div className="mb-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={qr} alt="Scan this QR code with your authenticator app" width={160} height={160} className="bg-white p-2 rounded mb-2" />
+          <div className="text-[11px] font-mono break-all" style={{ color: "var(--gw-text-2)" }}>
+            Can&apos;t scan? Enter this key: {secret}
+          </div>
+        </div>
+      )}
+      {(state === "needs-code" || qr) && (
+        <div className="flex items-center gap-2">
+          <input
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/D/g, ""))}
+            placeholder="123456"
+            className="w-32 rounded-md border px-3 py-2 bg-transparent font-mono focus:outline-none"
+            style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
+          />
+          <button
+            onClick={verify}
+            disabled={busy || code.length < 6}
+            className="text-xs px-3 py-2 rounded border"
+            style={{ borderColor: "var(--gw-border)", color: "var(--gw-text)" }}
+          >
+            {busy ? "Checking…" : "Verify"}
+          </button>
+        </div>
+      )}
+      {error && (
+        <div className="text-xs font-mono mt-2" style={{ color: "var(--gw-danger-text)" }}>
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface AdminDashboardProps {
   onLogout: () => void;
 }
@@ -5396,6 +5542,8 @@ function AdminDashboard({ onLogout }: AdminDashboardProps) {
             Sign out
           </button>
         </div>
+
+        <AdminTwoStep />
 
         {selectedShop ? (
           <AdminShopDetail

@@ -145,8 +145,8 @@ export default function PrivacyPolicyPage() {
 
         <h2 className={sectionHeading} style={sectionHeadingStyle}>11. Changes to This Policy</h2>
         <p className="text-sm leading-relaxed mb-10" style={bodyStyle}>
-          We may update this Privacy Policy from time to time. Material changes will be communicated via the App or
-          by email. Continued use of the Service after changes take effect constitutes acceptance of the revised
+          We may update this Privacy Policy from time to time. Material changes will be communicated via the App.
+          Continued use of the Service after changes take effect constitutes acceptance of the revised
           policy.
         </p>
       </div>

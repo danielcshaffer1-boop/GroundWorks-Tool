@@ -30,7 +30,7 @@ begin
   where name = 'alerts_webhook_secret';
 
   perform net.http_post(
-    url := 'https://groundworksinventory.dev/api/alerts/item-updated',
+    url := 'https://www.groundworksinventory.dev/api/alerts/item-updated',
     body := jsonb_build_object(
       'type', 'UPDATE',
       'table', 'items',

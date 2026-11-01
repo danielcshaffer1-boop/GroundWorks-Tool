@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getTwilioAccountSid, getTwilioAuthToken, getTwilioPhoneNumber } from "@/lib/twilio";
 import { DEMO_SHOP_ID } from "@/lib/demo";
+import { safeEqual } from "@/lib/safe-equal";
+import { alertablePhones, cleanForSms } from "@/lib/sms-text";
 import type { Status } from "@/lib/types";
 
 // Called by a Supabase Database Webhook (Database -> Webhooks in the
@@ -31,8 +33,7 @@ interface ItemRow {
 }
 
 export async function POST(request: Request) {
-  const secret = request.headers.get("x-alerts-secret");
-  if (!secret || secret !== process.env.ALERTS_WEBHOOK_SECRET) {
+  if (!safeEqual(request.headers.get("x-alerts-secret"), process.env.ALERTS_WEBHOOK_SECRET)) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
@@ -79,7 +80,8 @@ export async function POST(request: Request) {
     console.error("Couldn't load alert recipients:", error);
     return NextResponse.json({ error: "Couldn't load recipients." }, { status: 500 });
   }
-  if (!recipients || recipients.length === 0) {
+  const phones = alertablePhones(((recipients ?? []) as { phone: string }[]).map((r) => r.phone));
+  if (phones.length === 0) {
     return NextResponse.json({ ok: true, sent: 0, reason: "no recipients configured" });
   }
 
@@ -97,10 +99,10 @@ export async function POST(request: Request) {
 
   // Automatic Square deductions leave fractional counts (0.8734 gallons); texts read better rounded.
   const shownCount = Math.round(Number(record.count) * 100) / 100;
-  const body = `GroundWorks Inventory: ${record.name} is now ${STATUS_LABEL[newStatus]} — ${shownCount} ${record.unit} left (threshold ${record.threshold}). Reply STOP to opt out.`;
+  const body = `GroundWorks Inventory: ${cleanForSms(String(record.name), 40)} is now ${STATUS_LABEL[newStatus]} — ${shownCount} ${cleanForSms(String(record.unit), 20)} left (threshold ${Number(record.threshold)}). Reply STOP to opt out.`;
 
   const results = await Promise.all(
-    (recipients as { phone: string }[]).map(({ phone }) =>
+    phones.map((phone) =>
       fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
         method: "POST",
         headers: {
@@ -114,8 +116,8 @@ export async function POST(request: Request) {
 
   const failed = results.filter((r) => !r.ok).length;
   if (failed > 0) {
-    console.error(`${failed} of ${recipients.length} restock alert texts failed to send.`);
+    console.error(`${failed} of ${phones.length} restock alert texts failed to send.`);
   }
 
-  return NextResponse.json({ ok: true, sent: recipients.length - failed, failed });
+  return NextResponse.json({ ok: true, sent: phones.length - failed, failed });
 }

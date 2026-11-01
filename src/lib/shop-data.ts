@@ -236,17 +236,18 @@ export async function deleteIngredientRow(id: number): Promise<void> {
 }
 
 // Purely cosmetic per-shop preference — see supabase/010_shop_display_mode.sql.
-// Unlike tier, ordinary owner UPDATE privileges cover this column fine.
+// One of the two columns the browser role is granted UPDATE on (016_shops_lockdown.sql).
 export async function updateDisplayMode(shopId: string, mode: DisplayMode): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase.from("shops").update({ display_mode: mode }).eq("id", shopId);
   if (error) throw error;
 }
 
-// There is deliberately no client-side updateShopTier here anymore.
-// supabase/005_paid_tiers.sql revokes UPDATE on shops.tier from the
-// authenticated role entirely — only the Stripe webhook route, using the
-// service-role key server-side, can change it now.
+// There is deliberately no client-side updateShopTier here. The browser role
+// may only update display_mode and expiration_alert_days on a shop
+// (supabase/016_shops_lockdown.sql grants just those two columns and a trigger
+// rejects billing-column changes) — only the Stripe webhook route and the
+// admin route, using the service-role key server-side, can change the tier.
 
 export interface AlertRecipient {
   id: number;

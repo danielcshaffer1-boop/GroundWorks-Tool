@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { encryptToken, exchangeCode, listActiveLocationIds, squareConfigured, syncShop } from "@/lib/square";
 import { requireProOwner } from "@/lib/square-route";
+import { safeEqual } from "@/lib/safe-equal";
 
 // Square sends the seller back here with ?code=...&state=... (or ?error=... if
 // they declined). Never trust the redirect on its own: the state must match
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
   const code = params.get("code");
   const state = params.get("state");
   const cookieState = request.cookies.get("sq_oauth_state")?.value;
-  if (!code || !state || !cookieState || state !== cookieState || !squareConfigured()) return done("error");
+  if (!code || !state || !cookieState || !safeEqual(state, cookieState) || !squareConfigured()) return done("error");
 
   const guard = await requireProOwner();
   if ("response" in guard) return done("error");

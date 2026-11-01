@@ -1,18 +1,81 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getStripe, planForPriceId } from "@/lib/stripe";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 // The only place in this app that writes shops.tier/stripe_* — everywhere
-// else those columns are revoked from the authenticated role (see
-// supabase/005_paid_tiers.sql). Authenticated here by Stripe's signature,
-// not a Supabase session, since Stripe calls this server-to-server.
+// else those columns are closed to the browser (see supabase/016_shops_lockdown.sql).
+// Authenticated here by Stripe's signature, not a Supabase session, since
+// Stripe calls this server-to-server.
+
+// A subscription in one of these states still entitles the shop to access
+// (or is mid-retry), so a *different* subscription's events must not
+// overwrite it.
+const LIVE_STATUSES = new Set(["active", "trialing", "past_due", "unpaid"]);
+
+// Brings the shop row in line with what Stripe says about one subscription
+// *right now*. Events can arrive late, twice, or out of order, so every
+// handler re-reads the subscription instead of trusting the event payload.
+async function syncSubscription(
+  supabase: SupabaseClient,
+  stripe: Stripe,
+  shopId: string,
+  subscriptionId: string,
+  customerId?: string | null
+) {
+  const subscription = await stripe.subscriptions
+    .retrieve(subscriptionId)
+    .catch((err: { code?: string }) => (err?.code === "resource_missing" ? null : Promise.reject(err)));
+
+  const { data: shop } = await supabase
+    .from("shops")
+    .select("tier, stripe_subscription_id, subscription_status")
+    .eq("id", shopId)
+    .maybeSingle();
+  if (!shop) return;
+
+  // Another subscription already holds this shop's access (for example a
+  // second one that was started by mistake): ignore this one's events, so
+  // cancelling it can't lock out a shop that is still paying.
+  if (
+    shop.stripe_subscription_id &&
+    shop.stripe_subscription_id !== subscriptionId &&
+    LIVE_STATUSES.has(shop.subscription_status ?? "")
+  ) {
+    return;
+  }
+
+  if (!subscription) {
+    await supabase.from("shops").update({ tier: "none", subscription_status: "canceled" }).eq("id", shopId);
+    return;
+  }
+
+  const priceId = subscription.items.data[0]?.price.id;
+  const plan = priceId ? planForPriceId(priceId) : null;
+  const isActive = subscription.status === "active" || subscription.status === "trialing";
+  if (isActive && !plan) console.error(`Stripe subscription ${subscription.id} has an unrecognised price; leaving the tier unchanged.`);
+
+  const update: Record<string, string | null> = {
+    stripe_subscription_id: subscription.id,
+    subscription_status: subscription.status,
+  };
+  if (!isActive) update.tier = "none";
+  else if (plan) update.tier = plan;
+  if (customerId) update.stripe_customer_id = customerId;
+
+  await supabase.from("shops").update(update).eq("id", shopId);
+}
+
 export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-  if (!signature || !webhookSecret) {
+  if (!webhookSecret) {
     return NextResponse.json({ error: "Webhook not configured." }, { status: 500 });
+  }
+  if (!signature) {
+    return NextResponse.json({ error: "Missing signature." }, { status: 400 });
   }
 
   // Signature verification needs the exact raw body bytes — never parse
@@ -24,8 +87,8 @@ export async function POST(request: Request) {
   try {
     stripe = getStripe();
     event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
-  } catch (err) {
-    return NextResponse.json({ error: `Invalid signature: ${(err as Error).message}` }, { status: 400 });
+  } catch {
+    return NextResponse.json({ error: "Invalid signature." }, { status: 400 });
   }
 
   const supabase = getSupabaseAdmin();
@@ -41,57 +104,21 @@ export async function POST(request: Request) {
 
         const subscriptionId =
           typeof session.subscription === "string" ? session.subscription : session.subscription.id;
-        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-        const priceId = subscription.items.data[0]?.price.id;
-        const plan = priceId ? planForPriceId(priceId) : null;
-
-        await supabase
-          .from("shops")
-          .update({
-            tier: plan ?? "none",
-            stripe_customer_id:
-              typeof session.customer === "string" ? session.customer : (session.customer?.id ?? null),
-            stripe_subscription_id: subscription.id,
-            subscription_status: subscription.status,
-          })
-          .eq("id", shopId);
+        const customerId = typeof session.customer === "string" ? session.customer : (session.customer?.id ?? null);
+        await syncSubscription(supabase, stripe, shopId, subscriptionId, customerId);
         break;
       }
 
-      // Renewals, upgrades/downgrades via the billing portal, and payment
-      // failures all land here as a status/price change on the same
-      // subscription object.
+      // Renewals, upgrades/downgrades via the billing portal, payment
+      // failures and full cancellation all land here as a status/price
+      // change on the same subscription object.
       case "customer.subscription.created":
-      case "customer.subscription.updated": {
-        const subscription = event.data.object as Stripe.Subscription;
-        const shopId = subscription.metadata?.shopId;
-        if (!shopId) break;
-
-        const priceId = subscription.items.data[0]?.price.id;
-        const plan = priceId ? planForPriceId(priceId) : null;
-        const isActive = subscription.status === "active" || subscription.status === "trialing";
-
-        await supabase
-          .from("shops")
-          .update({
-            tier: isActive && plan ? plan : "none",
-            stripe_subscription_id: subscription.id,
-            subscription_status: subscription.status,
-          })
-          .eq("id", shopId);
-        break;
-      }
-
-      // Fully canceled (not just past-due) — revoke access.
+      case "customer.subscription.updated":
       case "customer.subscription.deleted": {
         const subscription = event.data.object as Stripe.Subscription;
         const shopId = subscription.metadata?.shopId;
         if (!shopId) break;
-
-        await supabase
-          .from("shops")
-          .update({ tier: "none", subscription_status: "canceled" })
-          .eq("id", shopId);
+        await syncSubscription(supabase, stripe, shopId, subscription.id);
         break;
       }
 

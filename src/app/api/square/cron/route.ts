@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { hasCronSecret } from "@/lib/safe-equal";
 import { squareConfigured, syncShop } from "@/lib/square";
 
 export const maxDuration = 300;
@@ -9,8 +10,7 @@ export const maxDuration = 300;
 // Syncs every connected shop that is still in good standing; one shop's
 // failure never stops the others.
 export async function GET(request: Request) {
-  const auth = request.headers.get("authorization");
-  if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!hasCronSecret(request)) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
   if (!squareConfigured()) return NextResponse.json({ ok: true, skipped: "square not configured" });

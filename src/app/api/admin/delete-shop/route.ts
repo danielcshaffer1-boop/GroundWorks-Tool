@@ -33,6 +33,12 @@ export async function POST(request: NextRequest) {
   }
 
   const admin = getSupabaseAdmin();
+  // An admin account can't be removed from here (including your own): that
+  // would also delete the admins row and could lock everyone out.
+  const { data: targetAdmin } = await admin.from("admins").select("id").eq("id", shopId).maybeSingle();
+  if (shopId === user.id || targetAdmin) {
+    return NextResponse.json({ error: "Admin accounts can't be deleted here." }, { status: 403 });
+  }
   const { data: shop } = await admin
     .from("shops")
     .select("id, name, stripe_subscription_id, subscription_status")
@@ -81,6 +87,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  console.info(`[admin-audit] ${user.id} deleted shop ${shopId}`);
   const { error: authError } = await admin.auth.admin.deleteUser(shopId);
   if (authError) {
     console.error("Admin delete-shop: shop removed but login delete failed:", authError);

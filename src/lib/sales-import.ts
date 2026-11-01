@@ -338,8 +338,10 @@ export function parseSalesText(input: string, override?: ColumnChoice): ParseRes
 
 const SIZE_WORDS = /\b(small|medium|large|sm|md|lg|xl|short|tall|grande|venti|regular|iced|hot|\d+\s?oz)\s*$/i;
 
-function cleanedForms(name: string): string[] {
+function cleanedForms(fullName: string): string[] {
   const forms = new Set<string>();
+  // A POS name is a few words; the cap also keeps the pattern matching below fast on junk input.
+  const name = fullName.slice(0, 200);
   const noParens = name.replace(/\([^)]*\)/g, " ").replace(/\[[^\]]*\]/g, " ");
   forms.add(noParens);
   forms.add(noParens.split(/\s[-–—]\s/)[0]);
@@ -378,7 +380,8 @@ export function matchRecipe(row: ParsedRow, recipes: Recipe[], aliases: Record<s
     }
   }
   for (const c of candidates) {
-    const aliased = aliases[normalizeName(c)];
+    const aliasKey = normalizeName(c);
+    const aliased = Object.prototype.hasOwnProperty.call(aliases, aliasKey) ? aliases[aliasKey] : undefined;
     if (aliased !== undefined && recipeById.has(aliased)) {
       return { recipeId: aliased, kind: "alias", suggestionId: null, suggestionScore: 1, viaVariation: c === withVariation };
     }

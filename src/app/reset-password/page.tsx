@@ -59,6 +59,9 @@ export default function ResetPasswordPage() {
         setError(updateError.message);
         return;
       }
+      // Sign every other device out, so a session that someone else already
+      // held on this account doesn't survive the password change.
+      await supabase.auth.signOut({ scope: "others" }).catch(() => undefined);
       setStatus("updated");
       setTimeout(() => router.push("/"), 1500);
     } catch {

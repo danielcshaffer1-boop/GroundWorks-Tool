@@ -1,13 +1,13 @@
+import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 // Server-only, service-role client. Bypasses RLS entirely, including the
-// column-level REVOKE on shops.tier/stripe_* from supabase/005_paid_tiers.sql
-// — that revoke only applies to the `authenticated` role; service_role
-// ignores it by design. This is the ONE legitimate place in the app that
-// should ever touch those columns: the Stripe webhook, which has no
-// Supabase Auth session of its own (it's a server-to-server call
-// authenticated by Stripe's signature, not a signed-in user) and so has no
-// other way to write a shop's tier after payment succeeds.
+// column grants and trigger on shops.tier/stripe_* from
+// supabase/016_shops_lockdown.sql — those only restrict the browser roles
+// (`authenticated`/`anon`); service_role ignores them by design. This is the
+// legitimate place in the app that writes those columns: the Stripe webhook
+// (a server-to-server call authenticated by Stripe's signature, not a
+// signed-in user) and the admin routes.
 //
 // Never import this from a client component or any route reachable by a
 // browser request without independently verifying a Stripe signature first.

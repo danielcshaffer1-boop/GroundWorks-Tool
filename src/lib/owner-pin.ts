@@ -1,3 +1,4 @@
+import "server-only";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 
 // Server-only helpers for the owner PIN. The PIN is a short number, so the

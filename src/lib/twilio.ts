@@ -1,3 +1,4 @@
+import "server-only";
 import { createHmac, timingSafeEqual } from "crypto";
 
 // Server-only. Auth Token is stored base64-wrapped (TWILIO_AUTH_TOKEN_B64)

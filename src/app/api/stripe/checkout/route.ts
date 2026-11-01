@@ -28,17 +28,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid plan." }, { status: 400 });
   }
 
-  // stripe_customer_id is readable by the owner (only UPDATE on it was
-  // revoked in 005_paid_tiers.sql), so this plain authenticated read is
-  // correctly scoped — no service-role client needed here.
+  // The billing columns are readable by the owner (writing them is closed to
+  // the browser, see 016_shops_lockdown.sql), so this plain authenticated
+  // read is correctly scoped — no service-role client needed here.
   const { data: shop, error: shopError } = await supabase
     .from("shops")
-    .select("id, stripe_customer_id")
+    .select("id, stripe_customer_id, stripe_subscription_id, subscription_status")
     .eq("id", user.id)
     .maybeSingle();
 
   if (shopError || !shop) {
     return NextResponse.json({ error: "Couldn't find your shop." }, { status: 404 });
+  }
+
+  // A second subscription would be billed on top of the first. Plan changes
+  // and cancellations go through the billing portal instead.
+  if (shop.stripe_subscription_id && ["active", "trialing", "past_due", "unpaid"].includes(shop.subscription_status ?? "")) {
+    return NextResponse.json({ error: "You already have a plan. Use Manage billing to change it." }, { status: 409 });
   }
 
   let stripe;

@@ -1,3 +1,4 @@
+import "server-only";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { InventoryItem, MenuItem, SaleLine } from "./types";
@@ -179,8 +180,16 @@ export interface SquareOrder {
   line_items?: SquareLineItem[];
 }
 
-async function searchClosedOrders(token: string, locationIds: string[], since: Date): Promise<SquareOrder[]> {
+// `resumeAt` is set when a location group had more orders than MAX_PAGES could
+// read: the closed_at of the last order actually read, so the caller doesn't
+// mark everything after it as synced.
+async function searchClosedOrders(
+  token: string,
+  locationIds: string[],
+  since: Date
+): Promise<{ orders: SquareOrder[]; resumeAt: Date | null }> {
   const orders: SquareOrder[] = [];
+  let resumeAt: Date | null = null;
   // The API accepts at most 10 locations per request.
   for (let i = 0; i < locationIds.length; i += 10) {
     let cursor: string | undefined;
@@ -203,9 +212,20 @@ async function searchClosedOrders(token: string, locationIds: string[], since: D
       orders.push(...(res.orders ?? []));
       cursor = res.cursor;
       if (!cursor) break;
+      if (page === MAX_PAGES - 1) {
+        const last = res.orders?.[res.orders.length - 1]?.closed_at;
+        const at = last ? new Date(last) : since;
+        if (!resumeAt || at < resumeAt) resumeAt = at;
+      }
     }
   }
-  return orders;
+  return { orders, resumeAt };
+}
+
+// Own-property lookup: the maps below are keyed by names a seller typed in
+// Square, and a name like "Constructor" must not find Object.prototype's.
+function own<T>(map: Record<string, T>, key: string): T | undefined {
+  return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : undefined;
 }
 
 // ---- Turning orders into stock changes (pure, unit-tested) -----------------
@@ -266,7 +286,7 @@ export function priceOrders(
       let scale = 1;
       if (row.variation && !match.viaVariation) {
         const sizeKey = normalizeName(row.variation);
-        scale = config.sizes[sizeKey] ?? 1;
+        scale = own(config.sizes, sizeKey) ?? 1;
         sizes.push({ key: sizeKey, label: row.variation });
       }
 
@@ -281,7 +301,7 @@ export function priceOrders(
         const modQty = Number(mod.quantity ?? "1");
         const times = Number.isFinite(modQty) && modQty > 0 ? modQty : 1;
         modifiers.push({ key: modKey, label: mod.name.trim() });
-        for (const effect of config.rules[modKey] ?? []) {
+        for (const effect of own(config.rules, modKey) ?? []) {
           if (effect.type === "add") adds.push({ itemId: effect.itemId, amount: effect.amount * times * qty });
           else swaps.push({ from: effect.fromItemId, to: effect.toItemId });
         }
@@ -290,6 +310,9 @@ export function priceOrders(
       sales.push({ menuItem: recipe, qty, scale, adds, swaps });
     }
     const { byItem } = computeDeductions(sales, items);
+    // A non-finite amount would be stored as null and make the whole batch of
+    // orders deduct nothing; drop it instead.
+    for (const [k, v] of Object.entries(byItem)) if (!Number.isFinite(v)) delete byItem[Number(k)];
     return { id: order.id, deltas: byItem, unmatched, sizes, modifiers };
   });
 }
@@ -302,7 +325,7 @@ export function parseEffects(raw: unknown): ModifierEffect[] | null {
   for (const e of raw) {
     if (!e || typeof e !== "object") return null;
     const x = e as Record<string, unknown>;
-    if (x.type === "add" && Number.isInteger(x.itemId) && typeof x.amount === "number" && Number.isFinite(x.amount) && x.amount >= 0) {
+    if (x.type === "add" && Number.isInteger(x.itemId) && typeof x.amount === "number" && Number.isFinite(x.amount) && x.amount >= 0 && x.amount <= 1_000_000) {
       out.push({ type: "add", itemId: x.itemId as number, amount: x.amount });
     } else if (x.type === "swap" && Number.isInteger(x.fromItemId) && Number.isInteger(x.toItemId)) {
       out.push({ type: "swap", fromItemId: x.fromItemId as number, toItemId: x.toItemId as number });
@@ -369,7 +392,7 @@ export async function syncShop(admin: SupabaseClient, shopId: string): Promise<S
     const lookback = c.last_synced_at ? new Date(new Date(c.last_synced_at).getTime() - LOOKBACK_MS) : syncFrom;
     const since = lookback > syncFrom ? lookback : syncFrom;
 
-    const orders = await searchClosedOrders(accessToken, locationIds, since);
+    const { orders, resumeAt } = await searchClosedOrders(accessToken, locationIds, since);
 
     // Skip orders already counted before doing any pricing work.
     const seen = new Set<string>();
@@ -430,7 +453,12 @@ export async function syncShop(admin: SupabaseClient, shopId: string): Promise<S
 
     await admin
       .from("square_connections")
-      .update({ last_synced_at: startedAt.toISOString(), last_error: null, location_ids: locationIds })
+      .update({
+        // If there were more orders than one run can read, only move forward as far as we actually got.
+        last_synced_at: (resumeAt ?? startedAt).toISOString(),
+        last_error: resumeAt ? "A lot of orders came in; the rest will sync on the next run." : null,
+        location_ids: locationIds,
+      })
       .eq("shop_id", shopId);
     // Housekeeping: nothing older than the lookback window can come back.
     await admin
@@ -448,9 +476,10 @@ export async function syncShop(admin: SupabaseClient, shopId: string): Promise<S
         .eq("shop_id", shopId);
       return { status: "needs_reconnect", ...none };
     }
-    const message = err instanceof Error ? err.message : "Unknown error";
+    // The detail stays in the server log; the owner only sees a plain message.
     console.error(`Square sync failed for ${shopId}:`, err);
-    await admin.from("square_connections").update({ last_error: message.slice(0, 300) }).eq("shop_id", shopId);
+    const message = "Square sync hit a problem. It will try again shortly.";
+    await admin.from("square_connections").update({ last_error: message }).eq("shop_id", shopId);
     return { status: "error", ...none, message };
   }
 }

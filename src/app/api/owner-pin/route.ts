@@ -14,6 +14,11 @@ import { LOCKOUT_MS, MAX_ATTEMPTS, hashPin, isValidPin, verifyPin } from "@/lib/
 // Setting or removing needs the shop's ACCOUNT PASSWORD, not just a session:
 // the barista who is already signed in on the shared device doesn't know it,
 // so they can't set a PIN of their own and lock the owner out.
+//
+// What this is and isn't: the PIN hides the settings screens on a shared
+// device so nobody changes things by accident. It is not a server-side lock —
+// a signed-in session can still talk to the database directly — so treat it
+// as a guard against mistakes, not against a determined person.
 
 async function currentShop() {
   const supabase = await createClient();
@@ -63,17 +68,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Too many wrong tries. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.` }, { status: 429 });
     }
 
+    // Use up one try BEFORE looking at the PIN, and do it atomically: the
+    // update only goes through if the counter is still what we just read. A
+    // burst of simultaneous guesses therefore can't all be checked against
+    // the same "0 wrong tries so far" — only one of them gets to proceed.
+    const attempts = Number(row.failed_attempts) + 1;
+    const lock = attempts >= MAX_ATTEMPTS;
+    const { data: reserved } = await admin
+      .from("shop_owner_pins")
+      .update({ failed_attempts: lock ? 0 : attempts, locked_until: lock ? new Date(Date.now() + LOCKOUT_MS).toISOString() : null })
+      .eq("shop_id", user.id)
+      .eq("failed_attempts", row.failed_attempts as number)
+      .or(`locked_until.is.null,locked_until.lt.${new Date().toISOString()}`)
+      .select("shop_id");
+    if (!reserved || reserved.length === 0) {
+      return NextResponse.json({ error: "Too many tries at once. Wait a moment and try again." }, { status: 429 });
+    }
+
     if (verifyPin(body.pin, row.pin_hash as string)) {
       await admin.from("shop_owner_pins").update({ failed_attempts: 0, locked_until: null }).eq("shop_id", user.id);
       return NextResponse.json({ ok: true });
     }
 
-    const attempts = Number(row.failed_attempts) + 1;
-    const lock = attempts >= MAX_ATTEMPTS;
-    await admin
-      .from("shop_owner_pins")
-      .update({ failed_attempts: lock ? 0 : attempts, locked_until: lock ? new Date(Date.now() + LOCKOUT_MS).toISOString() : null })
-      .eq("shop_id", user.id);
     return NextResponse.json(
       { error: lock ? "Too many wrong tries. Locked for 5 minutes." : `That PIN isn't right. ${MAX_ATTEMPTS - attempts} ${MAX_ATTEMPTS - attempts === 1 ? "try" : "tries"} left.` },
       { status: 401 }

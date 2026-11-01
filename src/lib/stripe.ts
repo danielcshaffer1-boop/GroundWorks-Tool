@@ -1,3 +1,4 @@
+import "server-only";
 import Stripe from "stripe";
 
 // Server-only. STRIPE_SECRET_KEY must never be prefixed NEXT_PUBLIC_ and

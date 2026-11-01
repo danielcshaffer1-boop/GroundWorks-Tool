@@ -45,6 +45,7 @@ import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { buildOrderList, orderText } from "@/lib/order-list";
 import { formatPhone, normalizePhone } from "@/lib/phone";
+import { goToTrustedUrl } from "@/lib/safe-redirect";
 import {
   parseSalesText,
   matchRecipe,
@@ -2280,7 +2281,8 @@ function SquareConnectionCard({
   const [busy, setBusy] = useState<"" | "connect" | "sync" | "disconnect">("");
   const [message, setMessage] = useState(() => {
     if (typeof window === "undefined") return "";
-    return SQUARE_FLASH[new URLSearchParams(window.location.search).get("square") ?? ""] ?? "";
+    const key = new URLSearchParams(window.location.search).get("square") ?? "";
+    return Object.prototype.hasOwnProperty.call(SQUARE_FLASH, key) ? SQUARE_FLASH[key] : "";
   });
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
@@ -2326,7 +2328,7 @@ function SquareConnectionCard({
         setBusy("");
         return;
       }
-      window.location.href = data.url;
+      if (!goToTrustedUrl(data.url)) throw new Error("Unexpected redirect address.");
     } catch {
       setMessage("Couldn't start the Square connection. Try again.");
       setBusy("");
@@ -2662,10 +2664,10 @@ function AlertsPage({ shopId, isDemoShop = false, expirationAlertDays, onChangeE
     if (!newPhone.trim() || !consentChecked) return;
     setActionError("");
     // Any normal way of typing a US number works; it's stored in the international
-    // form Twilio needs. Outside the US, start with + and the country code.
+    // form Twilio needs. Alerts go to US and Canadian numbers only.
     const phone = normalizePhone(newPhone);
     if (!phone) {
-      setActionError("That doesn't look like a phone number. Try (555) 234-5678, or start with + and the country code if it's outside the US.");
+      setActionError("That doesn't look like a phone number. Text alerts go to US and Canadian numbers. Try (555) 234-5678.");
       return;
     }
     setAdding(true);
@@ -2674,8 +2676,15 @@ function AlertsPage({ shopId, isDemoShop = false, expirationAlertDays, onChangeE
       setRecipients((prev) => [...prev, inserted]);
       setNewPhone("");
       setConsentChecked(false);
-    } catch {
-      setActionError("Couldn't add that number. Try again.");
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code;
+      setActionError(
+        code === "23505"
+          ? "That number is already on the list."
+          : code === "23514"
+            ? "A shop can have up to 5 numbers for text alerts. Remove one to add another."
+            : "Couldn't add that number. Try again."
+      );
     } finally {
       setAdding(false);
     }
@@ -3863,7 +3872,7 @@ function ShopDashboard({ shop, onLogout }: ShopDashboardProps) {
         setActionError(data?.error || "Couldn't open billing portal. Try again.");
         return;
       }
-      window.location.href = data.url;
+      if (!goToTrustedUrl(data.url)) throw new Error("Unexpected redirect address.");
     } catch {
       setActionError("Couldn't open billing portal. Try again.");
     } finally {
@@ -4945,7 +4954,7 @@ function NoPlanScreen({ shopName, onLogout }: NoPlanScreenProps) {
         setError(data?.error || "Couldn't start checkout. Try again.");
         return;
       }
-      window.location.href = data.url;
+      if (!goToTrustedUrl(data.url)) throw new Error("Unexpected redirect address.");
     } catch {
       setError("Couldn't start checkout. Try again.");
     } finally {

@@ -3,8 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { Tier } from "@/lib/types";
 
-// Lets an admin manually set a shop's tier, bypassing the column-level
-// REVOKE on shops.tier from 005_paid_tiers.sql (same mechanism the Stripe
+// Lets an admin manually set a shop's tier, which the browser roles can't write
+// (see 016_shops_lockdown.sql; same mechanism the Stripe
 // webhook uses — service-role client, gated here by our own admin check
 // rather than by Stripe's signature).
 //
@@ -39,15 +39,20 @@ export async function POST(request: NextRequest) {
   }
 
   const admin = getSupabaseAdmin();
-  const { error } = await admin
+  const { data: updated, error } = await admin
     .from("shops")
     .update({ tier: tier as Tier })
-    .eq("id", shopId);
+    .eq("id", shopId)
+    .select("id");
 
   if (error) {
     console.error("Admin set-tier failed:", error);
     return NextResponse.json({ error: "Couldn't update tier." }, { status: 500 });
   }
+  if (!updated || updated.length === 0) {
+    return NextResponse.json({ error: "Shop not found." }, { status: 404 });
+  }
+  console.info(`[admin-audit] ${user.id} set shop ${shopId} to ${tier}`);
 
   return NextResponse.json({ ok: true });
 }

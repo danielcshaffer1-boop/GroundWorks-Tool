@@ -5103,7 +5103,7 @@ function AdminShopDetail({ shop, onBack, onTierChanged, onDeleted }: AdminShopDe
   }
 
   const hasActiveSubscription =
-    !!shop.stripeSubscriptionId && (shop.subscriptionStatus === "active" || shop.subscriptionStatus === "trialing");
+    !!shop.stripeSubscriptionId && ["active", "trialing", "past_due"].includes(shop.subscriptionStatus ?? "");
 
   async function deleteShop() {
     if (deleting || confirmName.trim() !== shop.name) return;

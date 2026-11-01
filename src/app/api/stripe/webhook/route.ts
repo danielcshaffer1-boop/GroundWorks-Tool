@@ -14,6 +14,12 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 // overwrite it.
 const LIVE_STATUSES = new Set(["active", "trialing", "past_due", "unpaid"]);
 
+// A shop keeps its plan while Stripe is still retrying a failed card
+// (`past_due`): one declined payment shouldn't lock a shop out of its own
+// inventory. Access ends when Stripe gives up and cancels the subscription
+// (or marks it unpaid), which arrives here as a later event.
+const KEEPS_ACCESS = new Set(["active", "trialing", "past_due"]);
+
 // Brings the shop row in line with what Stripe says about one subscription
 // *right now*. Events can arrive late, twice, or out of order, so every
 // handler re-reads the subscription instead of trusting the event payload.
@@ -53,7 +59,7 @@ async function syncSubscription(
 
   const priceId = subscription.items.data[0]?.price.id;
   const plan = priceId ? planForPriceId(priceId) : null;
-  const isActive = subscription.status === "active" || subscription.status === "trialing";
+  const isActive = KEEPS_ACCESS.has(subscription.status);
   if (isActive && !plan) console.error(`Stripe subscription ${subscription.id} has an unrecognised price; leaving the tier unchanged.`);
 
   const update: Record<string, string | null> = {

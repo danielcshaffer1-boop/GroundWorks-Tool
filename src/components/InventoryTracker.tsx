@@ -2904,8 +2904,8 @@ function LoginScreen({ initialMode = "sign-in" }: { initialMode?: AuthMode }) {
       setError("Enter an email and password.");
       return;
     }
-    if (authMode === "sign-up" && password.length < 6) {
-      setError("Password must be at least 6 characters.");
+    if (authMode === "sign-up" && password.length < 8) {
+      setError("Password must be at least 8 characters.");
       return;
     }
 

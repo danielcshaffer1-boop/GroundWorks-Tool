@@ -25,7 +25,8 @@ After that, the most important items are: the SMS abuse path (SEC-02), upgrading
 **Still open, and why:**
 - **"Confirm email" is deliberately still off (SEC-05).** Custom SMTP is not configured, so Supabase's built-in mailer is in use, which is heavily rate-limited and not meant for real customers. Turning confirmation on now could stop real people from receiving their confirmation link and block sign-ups. Set up custom SMTP first (for example Resend with a verified sender domain), then turn it on. The sign-up screen already handles the "check your email" step. The same limitation affects password-reset emails.
 - **CAPTCHA on sign-up (SEC-05)** needs a Cloudflare Turnstile or hCaptcha site key from you.
-- **Twilio** Geo Permissions (US/Canada only) and a spend alert (SEC-02), and **GitHub** secret scanning (SEC-21): these need your own sign-in. The code and database already restrict alerts to US/Canada numbers.
+- **Twilio (checked 2026-11-01, no change needed):** Geo Permissions already allow only the United States and Canada (two boxes of 237 checked). The account is pay-as-you-go with a prepaid balance (about $13.70) and auto-recharge off, so the balance itself caps any abuse; a low-balance email alert is already on at $5. The inbound-message webhook uses the `www` address. Turning auto-recharge on would remove that cap; if you do, add a spend alert first.
+- **GitHub (done 2026-11-01):** secret scanning and push protection were already on; I turned on the dependency graph, Dependabot alerts and malware alerts. Dependabot security updates (automatic pull requests) are left off. The repository is still public.
 - SEC-06 real server-side PIN lock (decided: not needed), SEC-10 privacy-policy opt-in wording, admin MFA (SEC-17), and the per-item alert cooldown (SEC-02).
 
 Original note, from before approval: I was **waiting for approval before fixing anything**.

@@ -41,9 +41,10 @@ export default function TermsOfServicePage() {
 
         <ol className="list-decimal pl-5 text-sm leading-relaxed space-y-3 mt-4" style={bodyStyle}>
           <li>
-            <span className="font-semibold">Consent</span> — You consent to receive automated text messages about
-            product restock alerts at the mobile number you provide. Consent is not required to purchase or use
-            GroundWorks.
+            <span className="font-semibold">Consent</span> — Alerts begin only after the mobile number has been sent a
+            confirmation text and has replied YES. By replying YES you consent to receive automated text messages
+            about product restock alerts (and batch-expiry reminders, where a shop uses them) at that number. Consent
+            is not required to purchase or use GroundWorks.
           </li>
           <li>
             <span className="font-semibold">Message Frequency</span> — Frequency varies based on your configured

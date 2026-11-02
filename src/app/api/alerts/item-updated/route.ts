@@ -83,7 +83,8 @@ export async function POST(request: Request) {
   const { data: recipients, error } = await supabase
     .from("alert_recipients")
     .select("phone")
-    .eq("shop_id", record.shop_id);
+    .eq("shop_id", record.shop_id)
+    .not("confirmed_at", "is", null); // only numbers that replied YES
 
   if (error) {
     console.error("Couldn't load alert recipients:", error);
@@ -141,7 +142,9 @@ export async function POST(request: Request) {
 
   // Automatic Square deductions leave fractional counts (0.8734 gallons); texts read better rounded.
   const shownCount = Math.round(Number(record.count) * 100) / 100;
-  const body = `GroundWorks Inventory: ${cleanForSms(String(record.name), 40)} is now ${STATUS_LABEL[newStatus]} — ${shownCount} ${cleanForSms(String(record.unit), 20)} left (threshold ${Number(record.threshold)}). Reply STOP to opt out.`;
+  const { data: shopRow } = await supabase.from("shops").select("name").eq("id", record.shop_id).maybeSingle();
+  const shopName = cleanForSms(String(shopRow?.name ?? ""), 30);
+  const body = `GroundWorks Inventory:${shopName ? ` ${shopName}:` : ""} ${cleanForSms(String(record.name), 40)} is now ${STATUS_LABEL[newStatus]} - ${shownCount} ${cleanForSms(String(record.unit), 20)} left (threshold ${Number(record.threshold)}). Reply STOP to opt out.`;
 
   const results = await Promise.all(
     phones.map((phone) =>

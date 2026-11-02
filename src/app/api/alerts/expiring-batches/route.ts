@@ -121,7 +121,8 @@ export async function GET(request: Request) {
   const { data: recipientRows, error: recipientError } = await supabase
     .from("alert_recipients")
     .select("shop_id, phone")
-    .in("shop_id", Array.from(dueByShop.keys()));
+    .in("shop_id", Array.from(dueByShop.keys()))
+    .not("confirmed_at", "is", null); // only numbers that replied YES
 
   if (recipientError) {
     console.error("Couldn't load alert recipients for expiration texts:", recipientError);
@@ -187,7 +188,7 @@ export async function GET(request: Request) {
           `${cleanForSms(b.name, 40)}${b.label ? ` (${cleanForSms(b.label, 30)})` : ""}: ${Number(b.quantity)} ${cleanForSms(b.unit, 20)} (expires ${b.expiresOn})`
       )
       .join("; ");
-    const body = `GroundWorks Inventory: ${toSend.length} batch${toSend.length === 1 ? "" : "es"} expiring soon — ${lines}. Reply STOP to opt out.`;
+    const body = `GroundWorks Inventory: ${toSend.length} batch${toSend.length === 1 ? "" : "es"} expiring soon - ${lines}. Reply STOP to opt out.`;
 
     const results = await Promise.all(phones.map((phone) => sendSms(phone, body).catch(() => ({ ok: false }))));
     if (!results.some((r) => r.ok)) {

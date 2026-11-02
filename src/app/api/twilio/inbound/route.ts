@@ -25,6 +25,8 @@ const HELP_REPLY =
   "GroundWorks Inventory: Automated inventory alerts. Msg frequency varies. Msg &amp; data rates may apply. Reply STOP to cancel. Support: danielcshaffer1@gmail.com";
 const START_REPLY =
   "GroundWorks Inventory: You're not currently subscribed. Add your number again from the Alerts tab in the app to resume text alerts.";
+const CONFIRMED_REPLY =
+  "GroundWorks Inventory: You're opted in to restock text alerts. Msg frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help.";
 
 function twiml(message?: string): NextResponse {
   const body = message ? `<Message>${message}</Message>` : "";
@@ -66,8 +68,29 @@ export async function POST(request: Request) {
     return twiml(HELP_REPLY);
   }
 
-  if (START_KEYWORDS.includes(body)) {
-    return twiml(START_REPLY);
+  if (START_KEYWORDS.includes(body) && from) {
+    // A shop owner added this number and we texted it "reply YES to opt in".
+    // This reply is the recipient's own consent: record it, and only then do
+    // alerts start. YES from a number nobody added is told how to sign up.
+    const supabase = getSupabaseAdmin();
+    const { data: rows, error } = await supabase.from("alert_recipients").select("id, confirmed_at").eq("phone", from);
+    if (error) {
+      console.error("Couldn't look up a recipient to confirm:", error);
+      return twiml();
+    }
+    if (!rows || rows.length === 0) return twiml(START_REPLY);
+    const pending = rows.filter((r) => !r.confirmed_at).map((r) => r.id as number);
+    if (pending.length > 0) {
+      const { error: confirmError } = await supabase
+        .from("alert_recipients")
+        .update({ confirmed_at: new Date().toISOString(), confirmed_via: "sms_reply", confirmed_sid: params.MessageSid ?? null })
+        .in("id", pending);
+      if (confirmError) {
+        console.error("Couldn't record a recipient's confirmation:", confirmError);
+        return twiml();
+      }
+    }
+    return twiml(CONFIRMED_REPLY);
   }
 
   // This number is alert-only, not a two-way conversation — stay silent

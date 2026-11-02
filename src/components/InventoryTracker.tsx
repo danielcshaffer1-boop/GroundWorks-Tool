@@ -73,6 +73,7 @@ import {
   fetchAllShops,
   fetchAlertRecipients,
   addAlertRecipient,
+  resendAlertConfirmation,
   deleteAlertRecipient,
   updateDisplayMode,
   updateExpirationAlertDays,
@@ -2640,6 +2641,19 @@ function AlertsPage({ shopId, isDemoShop = false, expirationAlertDays, onChangeE
   const [newPhone, setNewPhone] = useState("");
   const [consentChecked, setConsentChecked] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [resendingId, setResendingId] = useState<number | null>(null);
+  const [notice, setNotice] = useState("");
+  const hasPending = recipients.some((r) => !r.confirmed);
+
+  // While a number is waiting for its YES, check again every 15 seconds so the
+  // list flips to "Confirmed" without a page reload.
+  useEffect(() => {
+    if (!hasPending || isDemoShop) return;
+    const timer = setInterval(() => {
+      fetchAlertRecipients(shopId).then(setRecipients, () => undefined);
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [hasPending, isDemoShop, shopId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2671,22 +2685,31 @@ function AlertsPage({ shopId, isDemoShop = false, expirationAlertDays, onChangeE
       return;
     }
     setAdding(true);
+    setNotice("");
     try {
-      const inserted = await addAlertRecipient(shopId, phone);
+      const inserted = await addAlertRecipient(phone);
       setRecipients((prev) => [...prev, inserted]);
       setNewPhone("");
       setConsentChecked(false);
+      setNotice("Text sent. The number needs to reply YES before alerts start.");
     } catch (err) {
-      const code = (err as { code?: string } | null)?.code;
-      setActionError(
-        code === "23505"
-          ? "That number is already on the list."
-          : code === "23514"
-            ? "A shop can have up to 5 numbers for text alerts. Remove one to add another."
-            : "Couldn't add that number. Try again."
-      );
+      setActionError(err instanceof Error ? err.message : "Couldn't add that number. Try again.");
     } finally {
       setAdding(false);
+    }
+  }
+
+  async function handleResend(id: number) {
+    setActionError("");
+    setNotice("");
+    setResendingId(id);
+    try {
+      await resendAlertConfirmation(id);
+      setNotice("Sent another text. The number needs to reply YES.");
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Couldn't send the text. Try again.");
+    } finally {
+      setResendingId(null);
     }
   }
 
@@ -2779,8 +2802,9 @@ function AlertsPage({ shopId, isDemoShop = false, expirationAlertDays, onChangeE
                 className="mt-0.5 shrink-0"
               />
               <span>
-                I agree to receive automated text alerts about my inventory (restock and expiration alerts) from
-                GroundWorks Inventory. Message frequency varies. Msg &amp; data rates may apply. Reply STOP to a
+                I confirm this is my number, or that its owner agreed to receive automated inventory text alerts
+                (restock and expiration) from GroundWorks Inventory. The number will get one text asking it to reply
+                YES before any alerts start. Message frequency varies. Msg &amp; data rates may apply. Reply STOP to a
                 text to opt out, HELP for help.
                 <span className="flex items-center gap-3 mt-2">
                   <a
@@ -2813,7 +2837,7 @@ function AlertsPage({ shopId, isDemoShop = false, expirationAlertDays, onChangeE
               className="px-4 py-2 rounded-md text-sm font-mono font-semibold flex items-center gap-1.5 disabled:opacity-40"
               style={{ backgroundColor: "var(--gw-accent)", color: "var(--gw-bg)" }}
             >
-              <Plus size={14} /> {adding ? "Signing up…" : "Yes, sign me up!"}
+              <Plus size={14} /> {adding ? "Sending text…" : "Add and send confirmation text"}
             </button>
           </div>
 
@@ -2822,10 +2846,15 @@ function AlertsPage({ shopId, isDemoShop = false, expirationAlertDays, onChangeE
               {actionError}
             </div>
           )}
+          {notice && !actionError && (
+            <div className="text-xs font-mono mb-4" style={{ color: "var(--gw-ok)" }}>
+              {notice}
+            </div>
+          )}
 
           {isDemoShop ? null : recipients.length === 0 ? (
             <p className="text-sm" style={{ color: "var(--gw-text-2)" }}>
-              No recipients yet — add a phone number above to start getting restock texts.
+              No recipients yet. Add a phone number above; it gets a text to reply YES to before alerts start.
             </p>
           ) : (
             <div className="flex flex-col gap-2">
@@ -2835,12 +2864,29 @@ function AlertsPage({ shopId, isDemoShop = false, expirationAlertDays, onChangeE
                   className="flex items-center justify-between rounded-lg border px-4 py-3"
                   style={{ borderColor: "var(--gw-border)" }}
                 >
-                  <span className="font-mono text-sm" style={{ color: "var(--gw-text)" }}>
-                    {formatPhone(r.phone)}
-                  </span>
-                  <button onClick={() => handleRemove(r.id)} style={{ color: "var(--gw-text-3)" }} aria-label="Remove">
-                    <Trash2 size={14} />
-                  </button>
+                  <div>
+                    <span className="font-mono text-sm" style={{ color: "var(--gw-text)" }}>
+                      {formatPhone(r.phone)}
+                    </span>
+                    <div className="text-[11px] font-mono mt-0.5" style={{ color: r.confirmed ? "var(--gw-ok)" : "var(--gw-text-3)" }}>
+                      {r.confirmed ? "Confirmed. Gets alerts." : "Waiting for them to reply YES. No alerts yet."}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {!r.confirmed && (
+                      <button
+                        onClick={() => handleResend(r.id)}
+                        disabled={resendingId === r.id}
+                        className="text-xs font-mono underline underline-offset-2 disabled:opacity-40"
+                        style={{ color: "var(--gw-text-2)" }}
+                      >
+                        {resendingId === r.id ? "Sending…" : "Resend text"}
+                      </button>
+                    )}
+                    <button onClick={() => handleRemove(r.id)} style={{ color: "var(--gw-text-3)" }} aria-label="Remove">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

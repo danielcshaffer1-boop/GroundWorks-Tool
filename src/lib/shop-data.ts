@@ -252,28 +252,47 @@ export async function updateDisplayMode(shopId: string, mode: DisplayMode): Prom
 export interface AlertRecipient {
   id: number;
   phone: string;
+  // False until the number has replied YES to the confirmation text; alerts
+  // only go to confirmed numbers.
+  confirmed: boolean;
 }
 
 export async function fetchAlertRecipients(shopId: string): Promise<AlertRecipient[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("alert_recipients")
-    .select("id, phone")
+    .select("id, phone, confirmed_at")
     .eq("shop_id", shopId)
     .order("id", { ascending: true });
   if (error) throw error;
-  return data as unknown as AlertRecipient[];
+  return (data as unknown as { id: number; phone: string; confirmed_at: string | null }[]).map((r) => ({
+    id: r.id,
+    phone: r.phone,
+    confirmed: r.confirmed_at !== null,
+  }));
 }
 
-export async function addAlertRecipient(shopId: string, phone: string): Promise<AlertRecipient> {
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from("alert_recipients")
-    .insert({ shop_id: shopId, phone })
-    .select("id, phone")
-    .single();
-  if (error) throw error;
-  return data as unknown as AlertRecipient;
+// Numbers are added on the server, which saves them as pending and texts them
+// "reply YES to opt in" (the browser cannot write alert_recipients directly).
+export async function addAlertRecipient(phone: string): Promise<AlertRecipient> {
+  const res = await fetch("/api/alerts/recipients", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phone, consent: true }),
+  });
+  const data = (await res.json().catch(() => null)) as { recipient?: AlertRecipient; error?: string } | null;
+  if (!res.ok || !data?.recipient) throw new Error(data?.error || "Could not add that number. Try again.");
+  return data.recipient;
+}
+
+export async function resendAlertConfirmation(id: number): Promise<void> {
+  const res = await fetch("/api/alerts/recipients/resend", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  const data = (await res.json().catch(() => null)) as { error?: string } | null;
+  if (!res.ok) throw new Error(data?.error || "Could not send the text. Try again.");
 }
 
 export async function deleteAlertRecipient(id: number): Promise<void> {

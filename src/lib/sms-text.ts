@@ -18,7 +18,7 @@ export function cleanForSms(text: string, maxLength: number): string {
     .replace(/https?:\/\/\S+|www\.\S+/gi, "[link]")
     .replace(/\s+/g, " ")
     .trim();
-  return flat.length > maxLength ? `${flat.slice(0, maxLength - 1)}…` : flat;
+  return flat.length > maxLength ? flat.slice(0, maxLength).trimEnd() : flat; // plain ASCII only: "…" would force costlier unicode texts
 }
 
 // The numbers a shop's alerts may go to: well-formed, de-duplicated, capped.

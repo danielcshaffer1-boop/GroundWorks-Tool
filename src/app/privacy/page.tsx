@@ -62,7 +62,7 @@ export default function PrivacyPolicyPage() {
         <h2 className={sectionHeading} style={sectionHeadingStyle}>2. How We Use Your Information</h2>
         <p className={body} style={bodyStyle}>We use the information above solely to:</p>
         <ul className="list-disc pl-5 text-sm leading-relaxed mb-2 space-y-1" style={bodyStyle}>
-          <li>Send restock alert text messages for the products or thresholds you configure in the App.</li>
+          <li>Send restock alert text messages (and batch-expiry reminders, when a shop uses them) for the products or thresholds configured in the App.</li>
           <li>Confirm opt-in and process opt-out (STOP) or help (HELP) requests.</li>
           <li>Troubleshoot delivery issues and maintain service reliability.</li>
           <li>Comply with legal and carrier requirements (e.g., TCPA, CTIA guidelines).</li>
@@ -74,10 +74,11 @@ export default function PrivacyPolicyPage() {
 
         <h2 className={sectionHeading} style={sectionHeadingStyle}>3. How You Consent and Opt In</h2>
         <p className={body} style={bodyStyle}>
-          You opt in to the Service by entering your phone number in the App&rsquo;s notification settings and
-          confirming via a one-time confirmation text. By opting in, you consent to receive automated text messages
-          related to restock alerts at the number provided. Consent is not a condition of purchasing or using the
-          App itself.
+          A shop&rsquo;s account holder adds a phone number in the App&rsquo;s Alerts tab and confirms that it is their
+          own number, or that the number&rsquo;s owner has agreed to receive these texts. We then send that number a
+          one-time confirmation text asking it to reply YES. The number receives no alerts unless and until it replies
+          YES. That reply is the recipient&rsquo;s consent to receive automated text messages about restock and expiry
+          alerts at that number. Consent is not a condition of purchasing or using the App itself.
         </p>
 
         <h2 className={sectionHeading} style={sectionHeadingStyle}>4. Message Frequency and Charges</h2>
@@ -90,7 +91,7 @@ export default function PrivacyPolicyPage() {
         <p className={body} style={bodyStyle}>You may opt out of text alerts at any time by:</p>
         <ul className="list-disc pl-5 text-sm leading-relaxed mb-2 space-y-1" style={bodyStyle}>
           <li>Replying STOP to any alert text, or</li>
-          <li>Disabling text notifications in your App account settings.</li>
+          <li>Asking the shop&rsquo;s account holder to remove your number from the App&rsquo;s Alerts tab, or contacting us.</li>
         </ul>
         <p className={body} style={bodyStyle}>
           After opting out, you will receive one final confirmation message and no further alerts unless you opt in
@@ -111,8 +112,9 @@ export default function PrivacyPolicyPage() {
 
         <h2 className={sectionHeading} style={sectionHeadingStyle}>7. Data Retention</h2>
         <p className={body} style={bodyStyle}>
-          We retain your phone number and opt-in/opt-out records for as long as your App account is active, and for
-          a reasonable period afterward as required to demonstrate consent compliance. You may request deletion of
+          We retain your phone number and its consent record (who added it, when, the wording they agreed to, and
+          the date and time of the YES reply) for as long as your App account is active, and for a reasonable period
+          afterward as required to demonstrate consent compliance. You may request deletion of
           this data as described in Section 9.
         </p>
 

@@ -38,6 +38,10 @@ After that, the most important items are: the SMS abuse path (SEC-02), upgrading
 
 **Registered 10DLC campaign (checked 2026-11-02):** the campaign is VERIFIED, and already lists YES as the opt-in keyword with the opt-in message "Opt in to restock notifications from GroundWorks Inventory by replying YES", so the new confirmation text matches it. Two differences remain, which only you can change in Twilio: (1) the campaign says recipients opt in themselves by entering their own number, while owners now add staff numbers and the staff confirm by replying YES; (2) the registered use is restock alerts only, but the app also sends batch-expiry reminders. If a carrier ever asks, either update the campaign description to cover both, or switch expiry texts off.
 
+**Forgotten passwords (2026-11-02).** The Admin screen's shop page has a "Forgotten password" section: "Set a temporary password" generates a readable password (for example `abcd-efgh-jkmn`), sets it through the auth admin API and shows it once. Behind the admin check and two-step verification; refused for the demo account and for admin accounts. Verified on production: the old password stops working and the new one signs in; without the two-step code, as a non-admin, or when signed out it is refused. There is no change-password screen for owners, so a temporary password stays until you set another one.
+
+**Accepted for now (your decision):** a handful of shops, so manual password resets are fine; Supabase stays on the Free plan (no automatic backups, and Free projects can pause when idle), to be watched.
+
 Original note, from before approval: I was **waiting for approval before fixing anything**.
 
 ## Summary table

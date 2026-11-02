@@ -5098,6 +5098,10 @@ function AdminShopDetail({ shop, onBack, onTierChanged, onDeleted }: AdminShopDe
   const [confirmName, setConfirmName] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwError, setPwError] = useState("");
+  const [tempPassword, setTempPassword] = useState("");
+  const [pwCopied, setPwCopied] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -5143,6 +5147,31 @@ function AdminShopDetail({ shop, onBack, onTierChanged, onDeleted }: AdminShopDe
       setTierError("Couldn't update tier. Try again.");
     } finally {
       setTierUpdating(false);
+    }
+  }
+
+  async function setTemporaryPassword() {
+    if (pwBusy) return;
+    setPwError("");
+    setTempPassword("");
+    setPwCopied(false);
+    setPwBusy(true);
+    try {
+      const res = await fetch("/api/admin/set-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shopId: shop.id }),
+      });
+      const data = (await res.json().catch(() => null)) as { ok?: boolean; password?: string; error?: string } | null;
+      if (!res.ok || !data?.ok || !data.password) {
+        setPwError(data?.error || "Couldn't set the password.");
+        return;
+      }
+      setTempPassword(data.password);
+    } catch {
+      setPwError("Couldn't set the password. Try again.");
+    } finally {
+      setPwBusy(false);
     }
   }
 
@@ -5227,6 +5256,50 @@ function AdminShopDetail({ shop, onBack, onTierChanged, onDeleted }: AdminShopDe
             ? `This shop has an active Stripe subscription (${shop.subscriptionStatus}) — an override here can get replaced the next time Stripe sends a billing event (renewal, plan change, etc.). Use the shop's own Stripe subscription if you need a permanent change.`
             : "This shop has no active Stripe subscription, so an override here sticks until they ever subscribe through Stripe."}
         </p>
+      </div>
+
+      <div className="rounded-lg border p-4 mb-8" style={{ borderColor: "var(--gw-border)", backgroundColor: "var(--gw-surface)" }}>
+        <div className="font-mono text-xs uppercase tracking-widest mb-2" style={{ color: "var(--gw-accent-text)" }}>
+          Forgotten password
+        </div>
+        <p className="text-sm mb-3" style={{ color: "var(--gw-text-2)" }}>
+          Sets a new temporary password on this shop&apos;s login and shows it once, so you can pass it to the owner. Their old
+          password stops working. Pass it on directly (call or text), not by email.
+        </p>
+        <button
+          onClick={setTemporaryPassword}
+          disabled={pwBusy}
+          className="px-4 py-2 min-h-11 rounded-md text-sm font-mono font-semibold border disabled:opacity-40"
+          style={{ borderColor: "var(--gw-border-strong)", color: "var(--gw-text)" }}
+        >
+          {pwBusy ? "Setting…" : tempPassword ? "Set a different password" : "Set a temporary password"}
+        </button>
+        {tempPassword && (
+          <div className="mt-3 rounded-md border p-3" style={{ borderColor: "var(--gw-border-strong)" }}>
+            <div className="font-mono text-lg tracking-wider mb-2" style={{ color: "var(--gw-text)" }} data-testid="temp-password">
+              {tempPassword}
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  navigator.clipboard?.writeText(tempPassword).then(() => setPwCopied(true), () => undefined);
+                }}
+                className="text-xs font-mono underline underline-offset-2"
+                style={{ color: "var(--gw-text-2)" }}
+              >
+                {pwCopied ? "Copied" : "Copy"}
+              </button>
+              <span className="text-[11px] font-mono" style={{ color: "var(--gw-text-3)" }}>
+                Shown once. It replaces their old password.
+              </span>
+            </div>
+          </div>
+        )}
+        {pwError && (
+          <div role="alert" className="text-xs font-mono mt-2" style={{ color: "var(--gw-danger-text)" }}>
+            {pwError}
+          </div>
+        )}
       </div>
 
       <div className="rounded-lg border p-4 mb-8" style={{ borderColor: "var(--gw-danger-text)" }}>

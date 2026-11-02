@@ -324,7 +324,7 @@ figure.shot.narrow { max-width: 17rem; }
   <ul class="plain">
     <li><strong>Restock texts</strong> go out when an item gets worse, for example from Stocked to Reorder Soon, or Reorder Soon to Critical. One text per step, with no repeats while it sits at the same status.</li>
     <li><strong>Expiration texts</strong> go out a set number of days before a batch expires, once per batch. The default is 3 days, and you can change the number on the page.</li>
-    <li><strong>Who gets them</strong> is whoever you add. Type a number any normal way, like (555) 234-5678. Outside the US, start with + and the country code. Each person ticks the consent box, and can reply STOP to opt out.</li>
+    <li><strong>Who gets them</strong> is whoever you add. Type a US or Canadian number any normal way, like (555) 234-5678, and tick the box to confirm it is theirs or that they agreed. That number gets one text asking it to reply YES, and alerts start only after they do. The list shows Waiting until then, with a Resend text link. Each person can reply STOP to opt out.</li>
   </ul>
   <div class="note yours">
     <strong>Your call.</strong>
@@ -472,7 +472,7 @@ figure.shot.narrow { max-width: 17rem; }
         <tr><td>Milk drops twice as fast as expected.</td><td>It may be counted two ways: sales sync and hand taps. Decide which owns that item and tell your team.</td></tr>
         <tr><td>The count slowly drifts from the shelf.</td><td>Normal. The closing count exists to correct it. If one item drifts a lot, check that its recipe amounts are right.</td></tr>
         <tr><td>An item is always Critical.</td><td>Its reorder level may be set higher than you really need. Lower it.</td></tr>
-        <tr><td>A text alert did not arrive.</td><td>Check that the number was added with the consent box ticked, that the person has not replied STOP, and that the status actually got worse. Texts fire on a change, not while an item sits at the same status.</td></tr>
+        <tr><td>A text alert did not arrive.</td><td>Check that the number shows Confirmed (the person has to reply YES to the first text; tap Resend text if they missed it), that they have not replied STOP, and that the status actually got worse. Texts fire on a change, not while an item sits at the same status.</td></tr>
         <tr><td>I forgot the owner PIN.</td><td>In the PIN box tap "Forgot the PIN?" and reset it with your account password.</td></tr>
         <tr><td>I cannot delete an item.</td><td>A recipe still uses it. Remove it from the recipe, then delete it.</td></tr>
       </tbody>

@@ -51,7 +51,7 @@ export default function SupportChat() {
         setMessages(messages);
         setInput(text);
       } else {
-        setMessages([...next, { role: "assistant", content: data.reply }]);
+        setMessages([...next, { role: "assistant", content: stripMarkdown(data.reply) }]);
       }
     } catch {
       setError("Couldn't connect. Check the Wi-Fi and try again.");
@@ -155,6 +155,15 @@ export default function SupportChat() {
       </button>
     </>
   );
+}
+
+// The prompt asks for plain text, but strip stray markdown in case it slips in.
+function stripMarkdown(text: string) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/__(.+?)__/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*[*-]\s+/gm, "• ");
 }
 
 function Bubble({ role, text }: { role: "user" | "assistant"; text: string }) {

@@ -57,6 +57,7 @@ import {
   type Match,
 } from "@/lib/sales-import";
 import { DEMO_SHOP_ID, DEMO_EMAIL, DEMO_PASSWORD } from "@/lib/demo";
+import SupportChat from "@/components/SupportChat";
 import {
   fetchItems,
   fetchMenuItems,
@@ -5872,7 +5873,12 @@ export default function InventoryTracker({ initialAuthMode = "sign-in" }: { init
   // Checked before the "no shop" fallback below — an admin has no shops
   // row at all by design, so `shop` is null for them even while signed in.
   if (status === "signedIn" && isAdmin) {
-    return <AdminDashboard onLogout={logout} />;
+    return (
+      <>
+        <AdminDashboard onLogout={logout} />
+        <SupportChat />
+      </>
+    );
   }
 
   if (status === "signedOut" || !shop) {
@@ -5883,5 +5889,13 @@ export default function InventoryTracker({ initialAuthMode = "sign-in" }: { init
     return <NoPlanScreen shopName={shop.name} onLogout={logout} />;
   }
 
-  return <ShopDashboard key={shop.id} shop={shop} onLogout={logout} />;
+  // The help chat calls a paid API, so the shared public demo doesn't get it.
+  // Rendered here (not in page.tsx) so it appears right after an in-place
+  // sign-in, without needing a page reload.
+  return (
+    <>
+      <ShopDashboard key={shop.id} shop={shop} onLogout={logout} />
+      {shop.id !== DEMO_SHOP_ID && <SupportChat />}
+    </>
+  );
 }

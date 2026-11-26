@@ -1,5 +1,7 @@
 import InventoryTracker from "@/components/InventoryTracker";
 import Landing from "@/components/landing/Landing";
+import SupportChat from "@/components/SupportChat";
+import { DEMO_SHOP_ID } from "@/lib/demo";
 import { createClient } from "@/lib/supabase/server";
 
 // Signed-in visitors get the app; everyone else gets the landing page. The
@@ -15,5 +17,13 @@ export default async function Home() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  return user ? <InventoryTracker /> : <Landing />;
+  if (!user) return <Landing />;
+
+  // The help chat calls a paid API, so the shared public demo doesn't get it.
+  return (
+    <>
+      <InventoryTracker />
+      {user.id !== DEMO_SHOP_ID && <SupportChat />}
+    </>
+  );
 }
